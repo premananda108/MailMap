@@ -17,7 +17,7 @@ from flask import render_template
 POSTMARK_SERVER_TOKEN = os.environ.get("POSTMARK_SERVER_TOKEN", "YOUR_POSTMARK_SERVER_TOKEN_HERE")
 SENDER_EMAIL_ADDRESS = os.environ.get("SENDER_EMAIL_ADDRESS", "noreply@example.com")
 SENDER_NAME = os.environ.get("SENDER_NAME", "MailMap")  # Optional: sender name
-BASE_URL = os.environ.get("BASE_URL", "https://399c-37-54-223-113.ngrok-free.app")
+BASE_URL = os.environ.get("BASE_URL", "https://mailmap.premananda.site")
 
 # SMTP Postmark Configuration
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.postmarkapp.com")
