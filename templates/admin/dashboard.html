@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MailMap - Панель модерации</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body class="admin-page">
+    <div class="admin-header">
+        <div class="admin-title">MailMap - Панель модерации</div>
+        <div class="admin-user">{{ admin_email }} <a href="/admin/logout" class="logout-link">Выйти</a></div>
+    </div>
+
+    <div class="admin-content">
+        <div class="admin-sidebar">
+            <div class="menu-item active"><a href="/admin/dashboard">Публикации на модерации</a></div>
+            <div class="menu-item"><a href="/admin/dashboard?status=all">Все публикации</a></div>
+        </div>
+
+        <div class="admin-main">
+            <div class="section-header">
+                <h2>{{ section_title }}</h2>
+                <div class="filter-controls">
+                    <select id="filter-status" onchange="filterByStatus(this.value)">
+                        <option value="all" {% if status == 'all' %}selected{% endif %}>Все</option>
+                        <option value="for_moderation" {% if status == 'for_moderation' %}selected{% endif %}>На модерации</option>
+                        <option value="published" {% if status == 'published' %}selected{% endif %}>Опубликованные</option>
+                        <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Отклоненные</option>
+                    </select>
+                </div>
+            </div>
+
+            {% if items %}
+            <div class="items-grid">
+                {% for item in items %}
+                <div class="content-item" data-item-id="{{ item.itemId }}">
+                    <div class="item-header">
+                        <span class="item-id">ID: {{ item.itemId }}</span>
+                        <span class="item-status status-{{ item.status }}">{{ item.status_display }}</span>
+                    </div>
+
+                    {% if item.imageUrl %}
+                    <div class="item-image">
+                        <img src="{{ item.imageUrl }}" alt="Изображение публикации">
+                    </div>
+                    {% endif %}
+
+                    <div class="item-text">{{ item.text }}</div>
+
+                    <div class="item-meta">
+                        <div>Голоса: {{ item.voteCount or 0 }}</div>
+                        <div>Жалобы: {{ item.reportedCount or 0 }}</div>
+                        <div>Дата: {{ item.timestamp|datetime }}</div>
+                    </div>
+
+                    {% if item.reports %}
+                    <div class="item-reports">
+                        <h4>Жалобы ({{ item.reports|length }}):</h4>
+                        <ul>
+                            {% for report in item.reports %}
+                            <li>{{ report.reason }} ({{ report.timestamp|datetime }})</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+
+                    <div class="item-actions">
+                        {% if item.status == 'for_moderation' %}
+                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Одобрить</button>
+                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Отклонить</button>
+                        {% elif item.status == 'rejected' %}
+                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Восстановить</button>
+                        {% elif item.status == 'published' %}
+                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Отклонить</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-items">
+                <p>Нет публикаций, соответствующих выбранным критериям.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function filterByStatus(status) {
+            window.location.href = '/admin/dashboard?status=' + status;
+        }
+
+        function approveContent(contentId) {
+            if (confirm('Вы уверены, что хотите одобрить эту публикацию?')) {
+                fetch(`/admin/api/content/${contentId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Публикация одобрена!');
+                        location.reload();
+                    } else {
+                        alert('Ошибка: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Произошла ошибка при обработке запроса');
+                });
+            }
+        }
+
+        function rejectContent(contentId) {
+            if (confirm('Вы уверены, что хотите отклонить эту публикацию?')) {
+                fetch(`/admin/api/content/${contentId}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Публикация отклонена!');
+                        location.reload();
+                    } else {
+                        alert('Ошибка: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Произошла ошибка при обработке запроса');
+                });
+            }
+        }
+    </script>
+</body>
+</html>

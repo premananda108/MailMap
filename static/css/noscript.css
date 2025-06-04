@@ -1,0 +1,60 @@
+/* Styles for fallback display when scripts are blocked */
+.fallback-container {
+    padding: 20px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.error-message {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.fallback-item {
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    background-color: #f9f9f9;
+}
+
+.fallback-item img {
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.fallback-item h4 {
+    margin-top: 0;
+}
+
+.fallback-timestamp {
+    font-size: 12px;
+    color: #666;
+}
+
+.fallback-vote-container {
+    margin-top: 10px;
+}
+
+.fallback-button {
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.fallback-button:hover {
+    background-color: #356ac3;
+}
