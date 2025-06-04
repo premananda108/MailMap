@@ -1,5 +1,4 @@
 # MailMap
-# MailMap
 
 MailMap is a web application that allows users to submit content (text and images) via email or through the web interface. The content is displayed on an interactive map based on the location coordinates attached to the content.
 
