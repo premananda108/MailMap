@@ -2,35 +2,35 @@
 import os
 from datetime import datetime
 from firebase_admin import firestore
-# import requests # Больше не нужен для отправки, если используем SMTP
+# import requests # No longer needed for sending if using SMTP
 
-# --- НОВЫЕ ИМПОРТЫ для SMTP ---
+# --- NEW IMPORTS for SMTP ---
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.header import Header  # Для корректной обработки не-ASCII символов в теме
-from email.utils import formataddr  # Для форматирования From/To с именами
-# --- КОНЕЦ НОВЫХ ИМПОРТОВ ---
+from email.header import Header  # For correct handling of non-ASCII characters in subject
+from email.utils import formataddr  # For formatting From/To with names
+# --- END OF NEW IMPORTS ---
 
 from flask import render_template
 
 POSTMARK_SERVER_TOKEN = os.environ.get("POSTMARK_SERVER_TOKEN", "YOUR_POSTMARK_SERVER_TOKEN_HERE")
 SENDER_EMAIL_ADDRESS = os.environ.get("SENDER_EMAIL_ADDRESS", "noreply@example.com")
-SENDER_NAME = os.environ.get("SENDER_NAME", "MailMap")  # Опционально: имя отправителя
+SENDER_NAME = os.environ.get("SENDER_NAME", "MailMap")  # Optional: sender name
 BASE_URL = os.environ.get("BASE_URL", "https://399c-37-54-223-113.ngrok-free.app")
 
-# SMTP Конфигурация Postmark
+# SMTP Postmark Configuration
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.postmarkapp.com")
-SMTP_PORT = os.environ.get("SMTP_PORT", "587")  # Рекомендуемый порт для TLS/STARTTLS
+SMTP_PORT = os.environ.get("SMTP_PORT", "587")  # Recommended port for TLS/STARTTLS
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 
 
 def create_email_notification_record(db_client, content_id, recipient_email):
-    # ... (эта функция остается без изменений) ...
+    # ... (this function remains unchanged) ...
     try:
         if not all([db_client, content_id, recipient_email]):
-            print("Ошибка в create_email_notification_record: Отсутствуют обязательные параметры")
+            print("Error in create_email_notification_record: Missing required parameters")
             return None
         notification_data = {
             'contentId': content_id,
@@ -49,10 +49,10 @@ def create_email_notification_record(db_client, content_id, recipient_email):
         }
         doc_ref = db_client.collection('emailNotifications').document()
         doc_ref.set(notification_data)
-        print(f"DEBUG: Создана запись об email-уведомлении: {doc_ref.id} для {recipient_email}")
+        print(f"DEBUG: Email notification record created: {doc_ref.id} for {recipient_email}")
         return doc_ref.id
     except Exception as e:
-        print(f"Ошибка в create_email_notification_record: {str(e)}")
+        print(f"Error in create_email_notification_record: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
@@ -64,7 +64,7 @@ def send_pending_notification(db_client, notification_id, app_context=None):
     try:
         notification_doc = notification_ref.get()
         if not notification_doc.exists:
-            print(f"Ошибка: Запись уведомления {notification_id} не найдена.")
+            print(f"Error: Notification record {notification_id} not found.")
             return False
 
         notification_data = notification_doc.to_dict()
@@ -74,16 +74,16 @@ def send_pending_notification(db_client, notification_id, app_context=None):
         # ...
         if notification_data.get('status') != STATUS_PENDING:
             print(
-                f"Уведомление {notification_id} не ожидает отправки (статус: {notification_data.get('status')}). Пропуск.")
+                f"Notification {notification_id} is not pending (status: {notification_data.get('status')}). Skipping.")
             return True
 
         content_id = notification_data.get('contentId')
         recipient_email = notification_data.get('recipientEmail')
 
         if not content_id or not recipient_email:
-            # ... (обработка ошибки остается) ...
-            error_msg = f"Уведомление {notification_id} не содержит contentId или recipientEmail."
-            print(f"Ошибка: {error_msg}")
+            # ... (error handling remains) ...
+            error_msg = f"Notification {notification_id} does not contain contentId or recipientEmail."
+            print(f"Error: {error_msg}")
             notification_ref.update({
                 'status': 'failed', 'lastError': error_msg, 'updatedAt': datetime.utcnow(),
                 'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
@@ -93,9 +93,9 @@ def send_pending_notification(db_client, notification_id, app_context=None):
         content_ref = db_client.collection('contentItems').document(content_id)
         content_doc = content_ref.get()
         if not content_doc.exists:
-            # ... (обработка ошибки остается) ...
-            error_msg = f"Элемент контента {content_id} для уведомления {notification_id} не найден."
-            print(f"Ошибка: {error_msg}")
+            # ... (error handling remains) ...
+            error_msg = f"Content item {content_id} for notification {notification_id} not found."
+            print(f"Error: {error_msg}")
             notification_ref.update({
                 'status': 'failed', 'lastError': error_msg, 'updatedAt': datetime.utcnow(),
                 'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
@@ -104,21 +104,21 @@ def send_pending_notification(db_client, notification_id, app_context=None):
 
         content_data = content_doc.to_dict()
         post_url = f"{BASE_URL}/post/{content_id}"
-        original_subject_text = content_data.get('subject', 'Ваш контент опубликован!')
+        original_subject_text = content_data.get('subject', 'Your content has been published!')
         image_url = content_data.get('imageUrl')
         text_from_content = content_data.get('text', '')
         latitude = content_data.get('latitude')
         longitude = content_data.get('longitude')
 
-        email_subject_text = f"Ваша публикация на MailMap: \"{original_subject_text}\" размещена!"
+        email_subject_text = f"Your post on MailMap: \"{original_subject_text}\" has been published!"
 
         text_body = (
-            f"Здравствуйте,\n\n"
-            f"Ваша публикация \"{original_subject_text}\" успешно размещена на MailMap.\n"
-            f"Текст: {text_from_content}\n"
-            f"Координаты: {latitude}, {longitude}\n"
-            f"Просмотреть: {post_url}\n\n"
-            f"С уважением, команда MailMap"
+            f"Hello,\n\n"
+            f"Your post \"{original_subject_text}\" has been successfully published on MailMap.\n"
+            f"Text: {text_from_content}\n"
+            f"Coordinates: {latitude}, {longitude}\n"
+            f"View: {post_url}\n\n"
+            f"Sincerely, The MailMap Team"
         )
 
         html_body = None
@@ -128,59 +128,59 @@ def send_pending_notification(db_client, notification_id, app_context=None):
             'subject_title': original_subject_text
         }
 
-        html_body = None  # Инициализируем на случай, если что-то пойдет не так
+        html_body = None  # Initialize in case something goes wrong
 
         try:
             if app_context:
-                # Если app_context предоставлен (например, из фоновой задачи),
-                # используем его для рендеринга шаблона.
+                # If app_context is provided (e.g., from a background task),
+                # use it for template rendering.
                 with app_context:
                     html_body = render_template('email_notification.html', **template_context)
             else:
-                # Если app_context не предоставлен (например, вызов из view-функции Flask),
-                # render_template попытается найти существующий контекст приложения.
-                # Если контекста нет, здесь возникнет RuntimeError.
+                # If app_context is not provided (e.g., call from a Flask view function),
+                # render_template will try to find an existing application context.
+                # If no context exists, a RuntimeError will occur here.
                 html_body = render_template('email_notification.html', **template_context)
 
         except RuntimeError as e:
-            # Эта ошибка возникает, если render_template вызывается без активного контекста Flask
-            # (и app_context не был предоставлен или не сработал).
+            # This error occurs if render_template is called without an active Flask context
+            # (and app_context was not provided or did not work).
             if "Working outside of application context" in str(e):
                 print(
-                    "Информация: Рендеринг шаблона вне/без активного контекста приложения Flask. Используется текстовый fallback.")
-                html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"  # Используем простой HTML из текстового тела
+                    "Information: Rendering template outside/without active Flask application context. Using text fallback.")
+                html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"  # Use simple HTML from text body
             else:
-                # Если это другой RuntimeError, не связанный с отсутствием контекста,
-                # лучше его перевыбросить, чтобы не скрыть другую проблему.
+                # If it's another RuntimeError not related to missing context,
+                # it's better to re-raise it to avoid hiding another problem.
                 raise e
         except Exception as e:
-            # Ловим другие возможные ошибки при рендеринге (например, TemplateNotFound, если шаблон не найден)
-            print(f"Ошибка при рендеринге шаблона 'email_notification.html': {e}. Используется текстовый fallback.")
+            # Catch other possible errors during rendering (e.g., TemplateNotFound if template is not found)
+            print(f"Error rendering template 'email_notification.html': {e}. Using text fallback.")
             html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"
 
-        # Дополнительная проверка на случай, если html_body по какой-то причине остался None
-        # (например, если render_template вернул None, хотя обычно он вызывает исключение при ошибке)
+        # Additional check in case html_body remains None for some reason
+        # (e.g., if render_template returned None, although it usually raises an exception on error)
         if html_body is None:
-            print("ПРЕДУПРЕЖДЕНИЕ: html_body не был сгенерирован (остался None). Используется текстовый fallback.")
+            print("WARNING: html_body was not generated (remained None). Using text fallback.")
             html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"
 
-        print(f"Попытка отправки email (SMTP) для уведомления {notification_id} на адрес {recipient_email}")
+        print(f"Attempting to send email (SMTP) for notification {notification_id} to {recipient_email}")
 
         if POSTMARK_SERVER_TOKEN == "YOUR_POSTMARK_SERVER_TOKEN_HERE" or not POSTMARK_SERVER_TOKEN:
             print(
-                "ПРЕДУПРЕЖДЕНИЕ: Серверный токен Postmark (SMTP_USERNAME/PASSWORD) не настроен. Email не будет отправлен.")
-            raise Exception("Серверный токен Postmark (SMTP_USERNAME/PASSWORD) не настроен.")
+                "WARNING: Postmark server token (SMTP_USERNAME/PASSWORD) is not configured. Email will not be sent.")
+            raise Exception("Postmark server token (SMTP_USERNAME/PASSWORD) is not configured.")
 
-        # --- НОВАЯ ЛОГИКА ОТПРАВКИ EMAIL через SMTP ---
+        # --- NEW EMAIL SENDING LOGIC via SMTP ---
         msg = MIMEMultipart('alternative')
-        # Используем formataddr для правильного отображения имени отправителя, если оно есть
+        # Use formataddr for correct display of sender name if present
         msg['From'] = formataddr((str(Header(SENDER_NAME, 'utf-8')), SENDER_EMAIL_ADDRESS))
         msg['To'] = recipient_email
-        # Используем Header для корректной обработки не-ASCII символов в теме
+        # Use Header for correct handling of non-ASCII characters in subject
         msg['Subject'] = Header(email_subject_text, 'utf-8')
 
-        # Прикрепляем текстовую и HTML версии
-        # Важно: сначала текстовая, потом HTML
+        # Attach text and HTML versions
+        # Important: text first, then HTML
         part1 = MIMEText(text_body, 'plain', 'utf-8')
         part2 = MIMEText(html_body, 'html', 'utf-8')
 
@@ -189,25 +189,25 @@ def send_pending_notification(db_client, notification_id, app_context=None):
 
         smtp_error = None
         try:
-            # Подключение к SMTP серверу Postmark
+            # Connect to Postmark SMTP server
             server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-            server.ehlo()  # Приветствие серверу
-            server.starttls()  # Включение TLS шифрования
-            server.ehlo()  # Повторное приветствие после STARTTLS
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)  # Аутентификация
-            server.sendmail(SENDER_EMAIL_ADDRESS, [recipient_email], msg.as_string())  # Отправка письма
-            server.quit()  # Закрытие соединения
-            print(f"Email (SMTP) для уведомления {notification_id} успешно отправлен на {recipient_email}.")
+            server.ehlo()  # Greet the server
+            server.starttls()  # Enable TLS encryption
+            server.ehlo()  # Re-greet after STARTTLS
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)  # Authenticate
+            server.sendmail(SENDER_EMAIL_ADDRESS, [recipient_email], msg.as_string())  # Send email
+            server.quit()  # Close connection
+            print(f"Email (SMTP) for notification {notification_id} sent successfully to {recipient_email}.")
             email_sent_status = True
-        except smtplib.SMTPException as e:  # Ловим специфичные ошибки SMTP
-            smtp_error = f"Ошибка SMTP: {str(e)}"
-            print(f"Ошибка отправки email (SMTP) для уведомления {notification_id}: {smtp_error}")
+        except smtplib.SMTPException as e:  # Catch specific SMTP errors
+            smtp_error = f"SMTP Error: {str(e)}"
+            print(f"Error sending email (SMTP) for notification {notification_id}: {smtp_error}")
             email_sent_status = False
-        except Exception as e:  # Ловим другие возможные ошибки (например, сетевые)
-            smtp_error = f"Общая ошибка при отправке SMTP: {str(e)}"
-            print(f"Ошибка отправки email (SMTP) для уведомления {notification_id}: {smtp_error}")
+        except Exception as e:  # Catch other possible errors (e.g., network issues)
+            smtp_error = f"General error during SMTP sending: {str(e)}"
+            print(f"Error sending email (SMTP) for notification {notification_id}: {smtp_error}")
             email_sent_status = False
-        # --- КОНЕЦ НОВОЙ ЛОГИКИ SMTP ---
+        # --- END OF NEW SMTP LOGIC ---
 
         current_time = datetime.utcnow()
         if email_sent_status:
@@ -218,16 +218,16 @@ def send_pending_notification(db_client, notification_id, app_context=None):
             return True
         else:
             notification_ref.update({
-                'status': 'failed', 'lastError': smtp_error or "Неизвестная ошибка SMTP",
+                'status': 'failed', 'lastError': smtp_error or "Unknown SMTP error",
                 'updatedAt': current_time, 'lastAttemptAt': current_time,
                 'attempts': firestore.Increment(1)
             })
             return False
 
     except Exception as e:
-        # ... (обработка критических ошибок остается) ...
+        # ... (critical error handling remains) ...
         error_str = str(e)
-        print(f"Критическая ошибка в send_pending_notification для {notification_id}: {error_str}")
+        print(f"Critical error in send_pending_notification for {notification_id}: {error_str}")
         import traceback
         traceback.print_exc()
         try:
@@ -237,5 +237,5 @@ def send_pending_notification(db_client, notification_id, app_context=None):
                     'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
                 })
         except Exception as inner_e:
-            print(f"Не удалось обновить статус уведомления {notification_id} после критической ошибки: {inner_e}")
+            print(f"Failed to update notification status {notification_id} after critical error: {inner_e}")
         return False

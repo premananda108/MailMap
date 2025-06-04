@@ -29,7 +29,7 @@ html, body {
 
 /* Map styles */
 #map {
-    height: 100vh; /* Занимает 100% высоты видимой области */
+    height: 100vh; /* Takes up 100% of the viewport height */
     width: 100%;
 }
 

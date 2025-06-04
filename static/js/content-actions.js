@@ -6,7 +6,7 @@ function voteContent(contentId, voteValue, event) {
     }
 
     if (!currentUser) {
-        console.log("Ожидание аутентификации...");
+        console.log("Waiting for authentication...");
         setTimeout(() => voteContent(contentId, voteValue, event), 500);
         return;
     }
@@ -35,12 +35,12 @@ function voteContent(contentId, voteValue, event) {
             }
         } else {
             console.error('Error voting:', data.message);
-            alert('Не удалось проголосовать: ' + data.message);
+            alert('Failed to vote: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Произошла ошибка при голосовании: ' + error.message);
+        alert('An error occurred while voting: ' + error.message);
     });
 }
 
@@ -52,12 +52,12 @@ function reportContent(contentId, event) {
     }
 
     if (!currentUser) {
-        console.log("Ожидание аутентификации...");
+        console.log("Waiting for authentication...");
         setTimeout(() => reportContent(contentId, event), 500);
         return;
     }
 
-    const reason = prompt('Пожалуйста, укажите причину жалобы:');
+    const reason = prompt('Please state the reason for your report:');
     if (reason === null) return;
 
     fetch(`/api/content/${contentId}/report`, {
@@ -74,22 +74,22 @@ function reportContent(contentId, event) {
     })
     .then(data => {
         if (data.status === 'success') {
-            alert('Спасибо! Ваша жалоба отправлена модераторам.');
+            alert('Thank you! Your report has been sent to the moderators.');
         } else {
             console.error('Error reporting:', data.message);
-            alert('Не удалось отправить жалобу: ' + data.message);
+            alert('Failed to send report: ' + data.message);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Произошла ошибка при отправке жалобы: ' + error.message);
+        alert('An error occurred while sending the report: ' + error.message);
     });
 }
 
 // Functions for add content form
 function openAddContentForm() {
     if (!currentUser) {
-        console.log("Ожидание аутентификации...");
+        console.log("Waiting for authentication...");
         setTimeout(openAddContentForm, 500);
         return;
     }
@@ -100,11 +100,11 @@ function openAddContentForm() {
             window.userLng = position.coords.longitude;
             document.getElementById('add-content-form').style.display = 'block';
         }, function(error) {
-            console.error("Ошибка получения геолокации:", error);
-            alert("Чтобы добавить публикацию, разрешите доступ к вашему местоположению.");
+            console.error("Error getting geolocation:", error);
+            alert("To add a post, please allow access to your location.");
         });
     } else {
-        alert("Ваш браузер не поддерживает определение геолокации.");
+        alert("Your browser does not support geolocation.");
     }
 }
 
@@ -116,7 +116,7 @@ function closeAddContentForm() {
 
 function submitContent() {
     if (!currentUser) {
-        alert("Необходимо авторизоваться для публикации контента.");
+        alert("You must be logged in to publish content.");
         return;
     }
 
@@ -124,12 +124,12 @@ function submitContent() {
     const imageFile = document.getElementById('content-image').files[0];
 
     if (!text && !imageFile) {
-        alert("Добавьте текст или изображение для публикации.");
+        alert("Add text or an image to publish.");
         return;
     }
 
     if (!window.userLat || !window.userLng) {
-        alert("Не удалось определить ваше местоположение. Попробуйте еще раз.");
+        alert("Could not determine your location. Please try again.");
         return;
     }
 
@@ -151,7 +151,7 @@ function submitContent() {
     })
     .then(data => {
         if (data.status === 'success') {
-            alert('Публикация успешно добавлена!');
+            alert('Post added successfully!');
             closeAddContentForm();
 
             // Create a new item object and add it to the map
@@ -174,33 +174,33 @@ function submitContent() {
             map.setCenter({lat: window.userLat, lng: window.userLng});
             map.setZoom(15);
         } else {
-            alert(`Ошибка: ${data.message}`);
+            alert(`Error: ${data.message}`);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Произошла ошибка при добавлении публикации: ' + error.message);
+        alert('An error occurred while adding the post: ' + error.message);
     });
 }
 
-// Функция для копирования в буфер обмена
+// Function to copy to clipboard
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        alert('Ссылка скопирована в буфер обмена!');
+        alert('Link copied to clipboard!');
     }).catch(err => {
-        console.error('Не удалось скопировать ссылку: ', err);
+        console.error('Failed to copy link: ', err);
     });
 }
 
-// Функция для шеринга в социальных сетях
+// Function for sharing on social media
 function shareOnSocialMedia(platform, url, title, imageUrl) {
-    // Проверяем входные данные и приводим к строке
+    // Validate input data and convert to string
     url = String(url || window.location.href);
-    title = String(title || 'Лайкни меня! Публикация на MailMap');
+    title = String(title || 'Like me! Post on MailMap'); // Default title in English
     imageUrl = String(imageUrl || '');
 
-    // Очистка от потенциальных символов, которые могут вызывать проблемы в URL
-    // и применяем encodeURIComponent только к уже очищенным данным
+    // Clean potential problematic characters from URL
+    // and apply encodeURIComponent only to cleaned data
     let cleanTitle = title.replace(/[\"'`]/g, '');
     let shareUrl;
 
@@ -229,17 +229,17 @@ function shareOnSocialMedia(platform, url, title, imageUrl) {
                            encodeURIComponent(cleanTitle);
                 break;
             default:
-                console.error('Неизвестная платформа:', platform);
+                console.error('Unknown platform:', platform);
                 return;
         }
 
-        // Открываем окно шеринга
+        // Open sharing window
         window.open(shareUrl, '_blank', 'width=600,height=400,resizable=yes,scrollbars=yes');
 
-        // Для аналитики - можно добавить отслеживание событий шеринга
-        console.log(`Поделились в ${platform}: ${url}`);
+        // For analytics - can add tracking for sharing events
+        console.log(`Shared on ${platform}: ${url}`);
     } catch (e) {
-        console.error('Ошибка при создании ссылки для шеринга:', e);
-        alert('Не удалось поделиться. Пожалуйста, попробуйте позже.');
+        console.error('Error creating share link:', e);
+        alert('Failed to share. Please try again later.');
     }
 }

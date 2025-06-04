@@ -1,4 +1,4 @@
-/* Стили для кнопок шеринга */
+/* Styles for sharing buttons */
 
 .sharing-buttons-container {
     margin-top: 10px;
@@ -55,7 +55,7 @@
     background-color: #1DA1F2;
 }
 
-/* Стили для модального окна с изображением */
+/* Styles for the image modal window */
 .image-modal {
     position: fixed;
     top: 0;
@@ -99,7 +99,7 @@
     gap: 10px;
 }
 
-/* Адаптивность для мобильных устройств */
+/* Responsiveness for mobile devices */
 @media (max-width: 768px) {
     .image-modal .sharing-buttons {
         flex-wrap: wrap;

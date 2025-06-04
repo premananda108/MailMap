@@ -5,11 +5,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- SEO метаданные -->
+    <!-- SEO metadata -->
     {% if target_item_data %}
-    <meta name="description" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(155) }}{% else %}Лайкни меня! Публикация на MailMap{% endif %}">
-    <meta property="og:title" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(60) }} - MailMap{% else %}Лайкни меня! MailMap{% endif %}">
-    <meta property="og:description" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(155) }}{% else %}Лайкни меня! Публикация на карте MailMap{% endif %}">
+    <meta name="description" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(155) }}{% else %}Like me! Post on MailMap{% endif %}">
+    <meta property="og:title" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(60) }} - MailMap{% else %}Like me! MailMap{% endif %}">
+    <meta property="og:description" content="{% if target_item_data.text %}{{ target_item_data.text|truncate(155) }}{% else %}Like me! Post on the MailMap{% endif %}">
     {% if target_item_data.imageUrl %}
     <meta property="og:image" content="{{ target_item_data.imageUrl }}">
     {% endif %}
@@ -18,9 +18,9 @@
     <meta property="og:site_name" content="MailMap">
     <meta name="twitter:card" content="summary_large_image">
     {% else %}
-    <meta name="description" content="MailMap - отправляйте и просматривайте публикации на карте">
-    <meta property="og:title" content="MailMap - Интерактивная карта публикаций">
-    <meta property="og:description" content="Отправляйте и просматривайте публикации на интерактивной карте">
+    <meta name="description" content="MailMap - send and view posts on the map">
+    <meta property="og:title" content="MailMap - Interactive Post Map">
+    <meta property="og:description" content="Send and view posts on an interactive map">
     <meta property="og:url" content="{{ request.url }}">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="MailMap">
@@ -34,41 +34,41 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 </head>
 <body>
-    <!-- Кнопка для добавления нового контента (закомментировано) -->
+    <!-- Button to add new content (commented out) -->
     <!--
     <div id="add-content-button" style="position:absolute;bottom:20px;right:20px;z-index:1000;">
         <button onclick="openAddContentForm()">+</button>
     </div>
     -->
 
-    <!-- Форма для добавления контента (закомментировано) -->
+    <!-- Form to add content (commented out) -->
     <!--
     <div id="add-content-form">
-        <h3 style="margin-top:0;">Добавить публикацию</h3>
+        <h3 style="margin-top:0;">Add Post</h3>
         <div style="margin-bottom:15px;">
-            <textarea id="content-text" placeholder="Введите текст публикации..."></textarea>
+            <textarea id="content-text" placeholder="Enter post text..."></textarea>
         </div>
         <div style="margin-bottom:15px;">
             <input type="file" id="content-image" accept="image/*">
         </div>
         <div style="display:flex;justify-content:space-between;">
-            <button onclick="closeAddContentForm()">Отмена</button>
-            <button onclick="submitContent()">Опубликовать</button>
+            <button onclick="closeAddContentForm()">Cancel</button>
+            <button onclick="submitContent()">Publish</button>
         </div>
     </div>
     -->
 
-    <!-- Карта -->
+    <!-- Map -->
     <div id="map"></div>
 
-    <!-- Индикатор загрузки -->
+    <!-- Loading indicator -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner"></div>
     </div>
 
-    <!-- Firebase инициализация -->
+    <!-- Firebase initialization -->
     <script>
-        // Инициализация Firebase
+        // Initialize Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyBqAx8f8U-GQmyHFQTsdv1OpvwdQg0gkK0", 
             authDomain: "mailmap-app.firebaseapp.com",
@@ -83,23 +83,23 @@
 
         firebase.auth().onAuthStateChanged(function(user) {
             if (user) {
-                console.log("Пользователь аутентифицирован:", user.uid);
+                console.log("User is authenticated:", user.uid);
                 currentUser = user;
             } else {
                 firebase.auth().signInAnonymously()
                     .then(function(result) {
-                        console.log("Анонимная аутентификация успешна", result.user.uid);
+                        console.log("Anonymous authentication successful", result.user.uid);
                         currentUser = result.user;
                     })
                     .catch(function(error) {
-                        console.error("Ошибка анонимной аутентификации:", error);
+                        console.error("Error in anonymous authentication:", error);
                     });
             }
         });
 
         const mapData = {{ items|tojson|safe }};
         
-        // Передаем ID целевой публикации, если есть
+        // Pass the target item ID, if any
         // eslint-disable-next-line
         'use strict';
         let targetItemId = {% if target_item_id %}"{{ target_item_id }}"{% else %}null{% endif %};
@@ -127,7 +127,7 @@
         }
     </script>
 
-    <!-- Подключаем JS файлы -->
+    <!-- Include JS files -->
     <script src="/static/js/map.js"></script>
     <script src="/static/js/content-actions.js"></script>
 

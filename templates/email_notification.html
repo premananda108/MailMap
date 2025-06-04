@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Публикация на MailMap</title>
+    <title>Publication on MailMap</title>
     <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
         .container { border: 1px solid #ddd; border-radius: 5px; padding: 20px; }
@@ -21,27 +21,27 @@
             <h1 style="margin: 0; font-size: 24px;">MailMap</h1>
         </div>
         <div class="content">
-            <h2>Ваша публикация успешно размещена!</h2>
-            <p>Здравствуйте!</p>
-            <p>Мы рады сообщить, что ваша публикация успешно размещена на карте MailMap.</p>
+            <h2>Your post has been successfully published!</h2>
+            <p>Hello!</p>
+            <p>We are pleased to inform you that your post has been successfully published on the MailMap.</p>
 
             <div class="preview">
-                <p><strong>Текст публикации:</strong></p>
+                <p><strong>Post text:</strong></p>
                 <p>{{ text_content }}</p>
                 {% if image_url %}
-                <img class="preview-image" src="{{ image_url }}" alt="Изображение публикации">
+                <img class="preview-image" src="{{ image_url }}" alt="Post Image">
                 {% endif %}
             </div>
 
-            <p>Теперь вы и другие пользователи могут увидеть вашу публикацию на карте по координатам: <strong>{{ latitude }}, {{ longitude }}</strong>.</p>
+            <p>Now you and other users can see your post on the map at coordinates: <strong>{{ latitude }}, {{ longitude }}</strong>.</p>
 
-            <p>Чтобы просмотреть вашу публикацию, нажмите на кнопку ниже:</p>
+            <p>To view your post, click the button below:</p>
 
-            <a href="{{ post_url }}" class="button">Просмотреть публикацию</a>
+            <a href="{{ post_url }}" class="button">View Post</a>
         </div>
         <div class="footer">
-            <p>С уважением, команда MailMap</p>
-            <p>Это автоматическое уведомление, пожалуйста, не отвечайте на это письмо.</p>
+            <p>Sincerely, The MailMap Team</p>
+            <p>This is an automated notification, please do not reply to this email.</p>
         </div>
     </div>
 </body>

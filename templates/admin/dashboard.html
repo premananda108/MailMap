@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MailMap - Панель модерации</title>
+    <title>MailMap - Moderation Panel</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -9,14 +9,14 @@
 </head>
 <body class="admin-page">
     <div class="admin-header">
-        <div class="admin-title">MailMap - Панель модерации</div>
-        <div class="admin-user">{{ admin_email }} <a href="/admin/logout" class="logout-link">Выйти</a></div>
+        <div class="admin-title">MailMap - Moderation Panel</div>
+        <div class="admin-user">{{ admin_email }} <a href="/admin/logout" class="logout-link">Logout</a></div>
     </div>
 
     <div class="admin-content">
         <div class="admin-sidebar">
-            <div class="menu-item active"><a href="/admin/dashboard">Публикации на модерации</a></div>
-            <div class="menu-item"><a href="/admin/dashboard?status=all">Все публикации</a></div>
+            <div class="menu-item active"><a href="/admin/dashboard">Posts for Moderation</a></div>
+            <div class="menu-item"><a href="/admin/dashboard?status=all">All Posts</a></div>
         </div>
 
         <div class="admin-main">
@@ -24,10 +24,10 @@
                 <h2>{{ section_title }}</h2>
                 <div class="filter-controls">
                     <select id="filter-status" onchange="filterByStatus(this.value)">
-                        <option value="all" {% if status == 'all' %}selected{% endif %}>Все</option>
-                        <option value="for_moderation" {% if status == 'for_moderation' %}selected{% endif %}>На модерации</option>
-                        <option value="published" {% if status == 'published' %}selected{% endif %}>Опубликованные</option>
-                        <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Отклоненные</option>
+                        <option value="all" {% if status == 'all' %}selected{% endif %}>All</option>
+                        <option value="for_moderation" {% if status == 'for_moderation' %}selected{% endif %}>For Moderation</option>
+                        <option value="published" {% if status == 'published' %}selected{% endif %}>Published</option>
+                        <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Rejected</option>
                     </select>
                 </div>
             </div>
@@ -43,21 +43,21 @@
 
                     {% if item.imageUrl %}
                     <div class="item-image">
-                        <img src="{{ item.imageUrl }}" alt="Изображение публикации">
+                        <img src="{{ item.imageUrl }}" alt="Post Image">
                     </div>
                     {% endif %}
 
                     <div class="item-text">{{ item.text }}</div>
 
                     <div class="item-meta">
-                        <div>Голоса: {{ item.voteCount or 0 }}</div>
-                        <div>Жалобы: {{ item.reportedCount or 0 }}</div>
-                        <div>Дата: {{ item.timestamp|datetime }}</div>
+                        <div>Votes: {{ item.voteCount or 0 }}</div>
+                        <div>Reports: {{ item.reportedCount or 0 }}</div>
+                        <div>Date: {{ item.timestamp|datetime }}</div>
                     </div>
 
                     {% if item.reports %}
                     <div class="item-reports">
-                        <h4>Жалобы ({{ item.reports|length }}):</h4>
+                        <h4>Reports ({{ item.reports|length }}):</h4>
                         <ul>
                             {% for report in item.reports %}
                             <li>{{ report.reason }} ({{ report.timestamp|datetime }})</li>
@@ -68,12 +68,12 @@
 
                     <div class="item-actions">
                         {% if item.status == 'for_moderation' %}
-                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Одобрить</button>
-                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Отклонить</button>
+                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Approve</button>
+                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Reject</button>
                         {% elif item.status == 'rejected' %}
-                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Восстановить</button>
+                        <button class="btn-approve" onclick="approveContent('{{ item.itemId }}')">Restore</button>
                         {% elif item.status == 'published' %}
-                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Отклонить</button>
+                        <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Reject</button>
                         {% endif %}
                     </div>
                 </div>
@@ -81,7 +81,7 @@
             </div>
             {% else %}
             <div class="no-items">
-                <p>Нет публикаций, соответствующих выбранным критериям.</p>
+                <p>No posts matching the selected criteria.</p>
             </div>
             {% endif %}
         </div>
@@ -93,7 +93,7 @@
         }
 
         function approveContent(contentId) {
-            if (confirm('Вы уверены, что хотите одобрить эту публикацию?')) {
+            if (confirm('Are you sure you want to approve this post?')) {
                 fetch(`/admin/api/content/${contentId}/approve`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -101,21 +101,21 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('Публикация одобрена!');
+                        alert('Post approved!');
                         location.reload();
                     } else {
-                        alert('Ошибка: ' + data.message);
+                        alert('Error: ' + data.message);
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Произошла ошибка при обработке запроса');
+                    alert('An error occurred while processing the request');
                 });
             }
         }
 
         function rejectContent(contentId) {
-            if (confirm('Вы уверены, что хотите отклонить эту публикацию?')) {
+            if (confirm('Are you sure you want to reject this post?')) {
                 fetch(`/admin/api/content/${contentId}/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -123,15 +123,15 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('Публикация отклонена!');
+                        alert('Post rejected!');
                         location.reload();
                     } else {
-                        alert('Ошибка: ' + data.message);
+                        alert('Error: ' + data.message);
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Произошла ошибка при обработке запроса');
+                    alert('An error occurred while processing the request');
                 });
             }
         }

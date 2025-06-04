@@ -2,7 +2,7 @@
 let map;
 let infoWindow;
 let mapItems = []; // Stores the items to be displayed on the map
-let currentTargetItemId = null; // ID целевой публикации, если карта должна центрироваться на ней
+let currentTargetItemId = null; // ID of the target post, if the map should center on it
 let markers = {}; // Object to store markers by item ID
 
 // Called by Google Maps API callback in index.html
@@ -93,7 +93,7 @@ function populateMapWithMarkers() {
     
     addMarkersToMapInternal(); // Call the function that iterates and creates markers
     
-    // Если есть целевая публикация, центрируем карту на ней и открываем InfoWindow
+    // If there is a target post, center the map on it and open InfoWindow
     if (currentTargetItemId) {
         focusOnTargetItem(currentTargetItemId);
     }
@@ -157,7 +157,7 @@ function createMarker(item) {
         markerElement.appendChild(imgElement);
     } else {
         const textElement = document.createElement('div');
-        textElement.textContent = item.text?.substring(0, 10) || 'Пост';
+        textElement.textContent = item.text?.substring(0, 10) || 'Post';
         Object.assign(textElement.style, { 
             backgroundColor: isUnderModeration ? '#FFC107' : '#4285F4', 
             color: isUnderModeration ? '#000' : 'white', padding: '8px', 
@@ -198,11 +198,11 @@ function focusOnTargetItem(itemId) {
     const marker = markers[itemId];
     
     if (targetItem && marker) {
-        // Центрируем карту на публикации
+        // Center the map on the post
         map.setCenter({ lat: targetItem.latitude, lng: targetItem.longitude });
-        map.setZoom(15); // Увеличиваем масштаб для лучшей видимости
+        map.setZoom(15); // Increase zoom for better visibility
         
-        // Открываем информационное окно
+        // Open info window
         const infoWindowContent = createInfoWindowContent(targetItem);
         infoWindow.setContent(infoWindowContent);
         infoWindow.open({ anchor: marker, map });
@@ -232,12 +232,12 @@ function createInfoWindowContent(item) {
     return `
         <div style="max-width:300px;">
             ${isUnderModeration ? `<div style="background-color:#FFF3CD;color:#856404;padding:5px 10px;margin-bottom:10px;border-radius:4px;font-size:12px;border:1px solid #FFEEBA;">
-                <strong>⚠️ На модерации</strong><br>
-                Эта публикация находится на рассмотрении модератора
+                <strong>⚠️ Under Moderation</strong><br>
+                This post is under review by a moderator.
             </div>` : ''}
-            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.text || 'Изображение'}" style="width:100%;max-height:200px;object-fit:cover;margin-bottom:8px;border-radius:4px;cursor:pointer;" onclick="showFullSizeImage('${item.imageUrl}', event)">` : ''}
+            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.text || 'Image'}" style="width:100%;max-height:200px;object-fit:cover;margin-bottom:8px;border-radius:4px;cursor:pointer;" onclick="showFullSizeImage('${item.imageUrl}', event)">` : ''}
             <div class="vote-container" style="display:flex;align-items:center;margin-top: ${item.imageUrl ? '8px' : '0'}; margin-bottom:10px;">
-                <span id="vote-count-${item.itemId}" style="margin-right:10px;">Голоса: ${item.voteCount || 0}</span>
+                <span id="vote-count-${item.itemId}" style="margin-right:10px;">Votes: ${item.voteCount || 0}</span>
                 <button onclick="voteContent('${item.itemId}', 1, event)" class="vote-btn like-btn" style="background-color:#4CAF50;color:white;border:none;border-radius:4px;padding:5px 10px;margin-right:5px;cursor:pointer;${isUnderModeration ? 'opacity:0.5;' : ''}"${isUnderModeration ? ' disabled' : ''}>
                     <span style="font-size:14px;">👍</span>
                 </button>
@@ -245,33 +245,33 @@ function createInfoWindowContent(item) {
                     <span style="font-size:14px;">👎</span>
                 </button>
             </div>
-            <h3 style="margin-top:0;margin-bottom:8px;">${item.text || 'Публикация без текста'}</h3>
+            <h3 style="margin-top:0;margin-bottom:8px;">${item.text || 'Post without text'}</h3>
             <p style="font-size:12px;color:#666;margin:0;margin-bottom:8px;">${formatTimestamp(item.timestamp)}</p>
             
-            <!-- Кнопки для поделиться в соцсетях -->
+            <!-- Share buttons -->
             <div style="margin-top:10px;border-top:1px solid #eee;padding-top:10px;">
-                <div style="font-size:12px;color:#666;margin-bottom:5px;">Поделиться:</div>
+                <div style="font-size:12px;color:#666;margin-bottom:5px;">Share:</div>
                 <div style="display:flex;gap:8px;">
-                    <button class="share-btn" data-platform="telegram" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Лайкни меня! Публикация на MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#0088CC;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
+                    <button class="share-btn" data-platform="telegram" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Like me! Post on MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#0088CC;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
                         Telegram
                     </button>
-                    <button class="share-btn" data-platform="x" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Лайкни меня! Публикация на MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#000000;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
+                    <button class="share-btn" data-platform="x" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Like me! Post on MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#000000;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
                         X
                     </button>
-                    <button class="share-btn" data-platform="whatsapp" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Лайкни меня! Публикация на MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#25D366;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
+                    <button class="share-btn" data-platform="whatsapp" data-url="${shareUrl}" data-text="${item.text ? encodeURIComponent(item.text) : 'Like me! Post on MailMap'}" data-image="${item.imageUrl || ''}" style="background-color:#25D366;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:12px;cursor:pointer;">
                         WhatsApp
                     </button>
                 </div>
             </div>
 
-            <!-- Дополнительные действия -->
+            <!-- Additional actions -->
             <div style="display:flex;justify-content:space-between;margin-top:10px;">
                 <button onclick="copyToClipboard('${shareUrl}')" style="background:none;border:none;color:#4285F4;font-size:12px;text-decoration:underline;cursor:pointer;padding:0;">
-                    Скопировать ссылку
+                    Copy link
                 </button>
                 ${!isUnderModeration ? `
                 <button onclick="reportContent('${item.itemId}', event)" class="report-btn" style="background:none;border:none;color:#999;font-size:12px;text-decoration:underline;cursor:pointer;padding:0;">
-                    Пожаловаться
+                    Report
                 </button>` : ''}
             </div>
         </div>
@@ -281,9 +281,9 @@ function createInfoWindowContent(item) {
 // Function to copy URL to clipboard
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        alert('Ссылка скопирована в буфер обмена!');
+        alert('Link copied to clipboard!');
     }).catch(err => {
-        console.error('Не удалось скопировать ссылку: ', err);
+        console.error('Failed to copy link: ', err);
     });
 }
 
@@ -306,21 +306,21 @@ function showFullSizeImage(imageUrl, event) {
     sharingContainer.className = 'sharing-buttons';
     sharingContainer.innerHTML = `
         <div style="background-color:rgba(0,0,0,0.7);padding:10px;border-radius:8px;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px;">
-            <button onclick="shareOnSocialMedia('vk', '${currentUrl}', 'Лайкни меня! Фото на MailMap', '${imageUrl}')" 
+            <button onclick="shareOnSocialMedia('vk', '${currentUrl}', 'Like me! Photo on MailMap', '${imageUrl}')"
                 style="background-color:#4C75A3;color:white;border:none;border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;">
-                ВКонтакте
+                VK
             </button>
-            <button onclick="shareOnSocialMedia('telegram', '${currentUrl}', 'Лайкни меня! Фото на MailMap', '${imageUrl}')" 
+            <button onclick="shareOnSocialMedia('telegram', '${currentUrl}', 'Like me! Photo on MailMap', '${imageUrl}')"
                 style="background-color:#0088CC;color:white;border:none;border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;">
                 Telegram
             </button>
-            <button onclick="shareOnSocialMedia('whatsapp', '${currentUrl}', 'Лайкни меня! Фото на MailMap', '${imageUrl}')" 
+            <button onclick="shareOnSocialMedia('whatsapp', '${currentUrl}', 'Like me! Photo on MailMap', '${imageUrl}')"
                 style="background-color:#25D366;color:white;border:none;border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;">
                 WhatsApp
             </button>
             <button onclick="copyToClipboard('${currentUrl}')" 
                 style="background-color:#555;color:white;border:none;border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;">
-                Копировать ссылку
+                Copy Link
             </button>
         </div>
     `;
@@ -413,6 +413,6 @@ function updateItemVoteCount(itemId, newVoteCount) {
     if (itemIndex !== -1) {
         mapItems[itemIndex].voteCount = newVoteCount;
         const voteCountElement = document.getElementById(`vote-count-${itemId}`);
-        if (voteCountElement) voteCountElement.textContent = `Голоса: ${newVoteCount}`;
+        if (voteCountElement) voteCountElement.textContent = `Votes: ${newVoteCount}`;
     }
 }

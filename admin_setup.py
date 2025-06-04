@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Скрипт для создания администратора в Firestore.
-Запустите этот скрипт один раз для создания первого администратора.
+Script to create an administrator in Firestore.
+Run this script once to create the first administrator.
 
-Пример использования:
+Usage example:
     python admin_setup.py admin@example.com your_secure_password
 """
 
@@ -13,37 +13,37 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 def create_admin(email, password):
-    # Инициализация Firebase Admin SDK
+    # Initialize Firebase Admin SDK
     try:
         firebase_admin.get_app()
     except ValueError:
-        # Используем учетные данные по умолчанию или из переменной окружения
+        # Use default credentials or from environment variable
         firebase_admin.initialize_app()
 
     db = firestore.client()
 
-    # Проверяем, существует ли уже администратор с таким email
+    # Check if an administrator with this email already exists
     existing_admin = db.collection('admins').where('email', '==', email).get()
 
     if existing_admin:
-        print(f"Администратор с email {email} уже существует.")
+        print(f"Administrator with email {email} already exists.")
         return False
 
-    # Создаем нового администратора
+    # Create a new administrator
     admin_data = {
         'email': email,
-        'password': password,  # В реальном приложении следует хешировать пароль
+        'password': password,  # In a real application, the password should be hashed
         'created_at': firestore.SERVER_TIMESTAMP
     }
 
     db.collection('admins').add(admin_data)
-    print(f"Администратор {email} успешно создан!")
-    print("ВАЖНО: В производственной среде следует использовать хеширование паролей.")
+    print(f"Administrator {email} created successfully!")
+    print("IMPORTANT: In a production environment, password hashing should be used.")
     return True
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Использование: python admin_setup.py email password")
+        print("Usage: python admin_setup.py email password")
         sys.exit(1)
 
     email = sys.argv[1]

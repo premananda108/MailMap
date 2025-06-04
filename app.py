@@ -12,7 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from werkzeug.utils import secure_filename
 
-# Загрузка переменных окружения из .env файла
+# Load environment variables from .env file
 load_dotenv()
 
 from email_utils import create_email_notification_record, send_pending_notification
@@ -42,7 +42,7 @@ def check_content_length():
             pass  # Or decide on a specific action, like abort(400) or abort(411)
 
 
-# Конфигурация
+# Configuration
 INBOUND_URL_TOKEN = os.environ.get('INBOUND_URL_TOKEN', 'INBOUND_URL_TOKEN')
 FIREBASE_STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', 'your-project.appspot.com')
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
@@ -51,10 +51,10 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KE
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif'}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 
-# Инициализация Firebase
+# Firebase Initialization
 if not firebase_admin._apps:
-    # Для production используйте service account key
-    cred = credentials.ApplicationDefault()  # или credentials.Certificate('path/to/serviceAccountKey.json')
+    # For production, use a service account key
+    cred = credentials.ApplicationDefault()  # or credentials.Certificate('path/to/serviceAccountKey.json')
     firebase_admin.initialize_app(cred, {
         'storageBucket': FIREBASE_STORAGE_BUCKET
     })
@@ -64,7 +64,7 @@ bucket = storage.bucket()
 
 
 def verify_inbound_token(token_to_verify):
-    """Проверка токена для входящих запросов"""
+    """Verify token for inbound requests"""
     if not token_to_verify:
         return False
     return token_to_verify == INBOUND_URL_TOKEN
@@ -72,11 +72,11 @@ def verify_inbound_token(token_to_verify):
 
 
 def parse_location_from_subject(subject):
-    """Парсинг координат из темы письма в формате lat:XX.XXX,lng:YY.YYY"""
+    """Parse coordinates from email subject in lat:XX.XXX,lng:YY.YYY format"""
     if not subject:
         return None, None
 
-    # Поиск паттерна lat:XX.XXX,lng:YY.YYY
+    # Search for lat:XX.XXX,lng:YY.YYY pattern
     pattern = r'lat:([-+]?\d*\.?\d+),lng:([-+]?\d*\.?\d+)'
     match = re.search(pattern, subject, re.IGNORECASE)
 
@@ -85,7 +85,7 @@ def parse_location_from_subject(subject):
             lat = float(match.group(1))
             lng = float(match.group(2))
 
-            # Валидация координат
+            # Validate coordinates
             if -90 <= lat <= 90 and -180 <= lng <= 180:
                 return lat, lng
         except ValueError:
@@ -95,60 +95,60 @@ def parse_location_from_subject(subject):
 
 
 def upload_image_to_gcs(image_data, filename):
-    """Загрузка изображения в Google Cloud Storage"""
+    """Upload image to Google Cloud Storage"""
     try:
-        # Генерация уникального имени файла
+        # Generate unique filename
         file_extension = filename.split('.')[-1].lower()
         unique_filename = f"content_images/{uuid.uuid4()}.{file_extension}"
 
-        # Создание blob в bucket
+        # Create blob in bucket
         blob = bucket.blob(unique_filename)
 
-        # Загрузка файла
+        # Upload file
         blob.upload_from_string(
             image_data,
             content_type=f'image/{file_extension}'
         )
 
-        # Делаем файл публично доступным
+        # Make file publicly accessible
         blob.make_public()
 
         return blob.public_url
 
     except Exception as e:
-        print(f"Ошибка при загрузке изображения в GCS: {e}")
+        print(f"Error uploading image to GCS: {e}")
         return None
 
 
 def save_content_to_firestore(data):
-    """Сохранение контента в Firestore с дополнительными полями для системы уведомлений."""
+    """Save content to Firestore with additional fields for the notification system."""
     try:
-        # Добавляем поля для отслеживания статуса уведомлений
-        data['notificationSent'] = False  # Было ли отправлено уведомление о публикации
-        data['notificationSentAt'] = None  # Время отправки уведомления
+        # Add fields for tracking notification status
+        data['notificationSent'] = False  # Has the publication notification been sent
+        data['notificationSentAt'] = None  # Time the notification was sent
 
-        # Добавляем shortUrl для использования в кратких ссылках (например, base62 от itemId)
-        # Это поле будет заполнено после создания документа, когда будет известен ID
+        # Add shortUrl for use in short links (e.g., base62 of itemId)
+        # This field will be populated after the document is created, when the ID is known
         data['shortUrl'] = None
 
         doc_ref = db.collection('contentItems').document()
         doc_ref.set(data)
 
-        # Теперь, когда у нас есть ID документа, мы можем создать shortUrl
-        # Для простоты используем сам ID, но в продакшене можно использовать
-        # более короткие идентификаторы или хеши
+        # Now that we have the document ID, we can create a shortUrl
+        # For simplicity, we use the ID itself, but in production,
+        # shorter identifiers or hashes could be used
         doc_ref.update({
-            'shortUrl': doc_ref.id  # В будущем здесь можно использовать функцию для генерации короткого URL
+            'shortUrl': doc_ref.id  # In the future, a function for generating a short URL can be used here
         })
 
         return doc_ref.id
     except Exception as e:
-        print(f"Ошибка при сохранении в Firestore: {e}")
+        print(f"Error saving to Firestore: {e}")
         return None
 
 
 def process_email_attachments(attachments):
-    """Обработка вложений письма"""
+    """Process email attachments"""
     if not attachments:
         print("DEBUG: No attachments found in email.")
         return None, None, None
@@ -161,12 +161,12 @@ def process_email_attachments(attachments):
 
         print(f"DEBUG: Attachment {i + 1}: Name='{filename}', ContentType='{content_type}', HasContent={bool(content)}")
 
-        # Проверяем, что это изображение
+        # Check if it's an image
         if not content_type.startswith('image/'):
             print(f"DEBUG: Attachment {i + 1} ('{filename}') is not an image (ContentType: {content_type}). Skipping.")
             continue
 
-        # Проверяем расширение файла
+        # Check file extension
         if not filename or '.' not in filename:
             print(f"DEBUG: Attachment {i + 1} ('{filename}') has no extension. Skipping.")
             continue
@@ -176,23 +176,23 @@ def process_email_attachments(attachments):
             continue
 
         try:
-            # Декодируем base64
+            # Decode base64
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): Attempting to decode Base64 content.")
             image_data = base64.b64decode(content)
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): Decoded. Image data length: {len(image_data)} bytes.")
 
-            # Проверяем размер файла
+            # Check file size
             if len(image_data) > MAX_IMAGE_SIZE:
                 print(
-                    f"DEBUG: Файл {filename} слишком большой ({len(image_data)} байт). MAX_IMAGE_SIZE is {MAX_IMAGE_SIZE}. Skipping.")
+                    f"DEBUG: File {filename} is too large ({len(image_data)} bytes). MAX_IMAGE_SIZE is {MAX_IMAGE_SIZE}. Skipping.")
                 continue
 
-            # Извлекаем GPS координаты
+            # Extract GPS coordinates
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): Extracting EXIF GPS data.")
             lat, lng = extract_gps_coordinates(image_data)
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): EXIF GPS: lat={lat}, lng={lng}")
 
-            # Загружаем в GCS
+            # Upload to GCS
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): Uploading to GCS.")
             image_url = upload_image_to_gcs(image_data, filename)
             print(f"DEBUG: Attachment {i + 1} ('{filename}'): GCS URL: {image_url}")
@@ -206,12 +206,12 @@ def process_email_attachments(attachments):
 
 
         except Exception as e:
-            print(f"Ошибка при обработке вложения {filename}: {e}")
+            print(f"Error processing attachment {filename}: {e}")
             import traceback
-            traceback.print_exc()  # Печатаем полный traceback для ошибок
+            traceback.print_exc()  # Print full traceback for errors
             continue
 
-    print("DEBUG: ЗАВЕРШЕНИЕ ЦИКЛА В process_email_attachments. ПЕРЕД ФИНАЛЬНЫМ RETURN.")  # ДОБАВЬТЕ ЭТУ СТРОКУ
+    print("DEBUG: END OF LOOP IN process_email_attachments. BEFORE FINAL RETURN.")
     return None, None, None
 
 
@@ -220,8 +220,8 @@ def postmark_webhook():
     token_from_query = request.args.get('token')
 
     print(f"=== WEBHOOK DEBUG INFO ===")
-    print(f"Получен запрос с токеном из query: {token_from_query}")
-    print(f"Ожидаемый токен: {INBOUND_URL_TOKEN}")
+    print(f"Received request with token from query: {token_from_query}")
+    print(f"Expected token: {INBOUND_URL_TOKEN}")
     print(f"Method: {request.method}")
     print(f"Headers: {dict(request.headers)}")
     print(f"Content-Type: {request.content_type}")
@@ -243,12 +243,12 @@ def postmark_webhook():
         }), 400
 
     if not verify_inbound_token(token_from_query):
-        print("Неверный токен в URL query parameter")
+        print("Invalid token in URL query parameter")
         return jsonify({'status': 'error', 'message': 'Invalid token'}), 401
 
     try:
         if not data:
-            print("Не получены JSON данные")
+            print("No JSON data received")
             return jsonify({'status': 'error', 'message': 'No JSON data received'}), 400
 
         from_email = data.get('FromFull', {}).get('Email', '') if data.get('FromFull') else data.get('From', '')
@@ -257,13 +257,13 @@ def postmark_webhook():
         html_body = data.get('HtmlBody', '')
         attachments = data.get('Attachments', [])
 
-        print(f"Получено письмо от {from_email} с темой: {subject}")
-        print(f"Количество вложений: {len(attachments)}")
+        print(f"Received email from {from_email} with subject: {subject}")
+        print(f"Number of attachments: {len(attachments)}")
 
         image_url, exif_lat, exif_lng = process_email_attachments(attachments)
 
         if not image_url:
-            print("Не найдено подходящих изображений во вложениях")
+            print("No suitable images found in attachments")
             return jsonify({'status': 'error', 'message': 'No valid images found'}), 400
 
         latitude, longitude = exif_lat, exif_lng
@@ -274,7 +274,7 @@ def postmark_webhook():
                 latitude, longitude = subject_lat, subject_lng
 
         if latitude is None or longitude is None:
-            print("Не удалось определить координаты для публикации")
+            print("Could not determine coordinates for the post")
             return jsonify({
                 'status': 'error',
                 'message': 'Location coordinates not found. Please include GPS data in image or specify in subject as lat:XX.XXX,lng:YY.YYY'
@@ -296,13 +296,13 @@ def postmark_webhook():
         content_id = save_content_to_firestore(content_data)
 
         if content_id:
-            print(f"Контент успешно сохранен с ID: {content_id}")
+            print(f"Content saved successfully with ID: {content_id}")
 
-            # Создаем запись о необходимости отправки уведомления
-            if from_email:  # Проверяем, что у нас есть адрес отправителя
+            # Create a record for sending a notification
+            if from_email:  # Check if we have the sender's address
                 notification_id = create_email_notification_record(db, content_id, from_email)
                 if notification_id:
-                    ok = send_pending_notification(db, notification_id)   # app_context не нужен
+                    ok = send_pending_notification(db, notification_id)   # app_context is not needed
                     if ok:
                         print(f'Notification {notification_id} sent')
                 else:
@@ -320,7 +320,7 @@ def postmark_webhook():
             }), 500
 
     except Exception as e:
-        print(f"Ошибка при обработке веб-хука: {e}")
+        print(f"Error processing webhook: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -329,7 +329,7 @@ def postmark_webhook():
         }), 500
 
 
-# --- АДМИНИСТРАТИВНАЯ ПАНЕЛЬ ---
+# --- ADMIN PANEL ---
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -338,30 +338,30 @@ def admin_login():
         password = request.form.get('password')
 
         try:
-            # Проверка учетных данных администратора
+            # Check administrator credentials
             admin_ref = db.collection('admins').where('email', '==', email).limit(1).get()
 
             if not admin_ref:
-                return render_template('admin/login.html', error='Неверный email или пароль')
+                return render_template('admin/login.html', error='Invalid email or password')
 
             admin_doc = admin_ref[0]
             admin_data = admin_doc.to_dict()
 
-            # Проверка пароля (в реальном проекте использовать хеширование)
+            # Password check (in a real project, use hashing)
             if admin_data.get('password') != password:
-                return render_template('admin/login.html', error='Неверный email или пароль')
+                return render_template('admin/login.html', error='Invalid email or password')
 
-            # Создаем сессию для администратора
+            # Create session for administrator
             session['admin_id'] = admin_doc.id
             session['admin_email'] = admin_data.get('email')
 
             return redirect(url_for('admin_dashboard'))
 
         except Exception as e:
-            print(f"Ошибка при входе администратора: {e}")
-            return render_template('admin/login.html', error='Произошла ошибка при входе')
+            print(f"Error during administrator login: {e}")
+            return render_template('admin/login.html', error='An error occurred during login')
 
-    # Если пользователь уже вошел как админ, перенаправляем на панель
+    # If user is already logged in as admin, redirect to dashboard
     if 'admin_id' in session:
         return redirect(url_for('admin_dashboard'))
 
@@ -375,7 +375,7 @@ def admin_logout():
 
 @app.route('/admin/dashboard')
 def admin_dashboard():
-    # Проверка доступа администратора
+    # Administrator access check
     if 'admin_id' not in session:
         return redirect(url_for('admin_login'))
 
@@ -384,14 +384,14 @@ def admin_dashboard():
     try:
         items_query = db.collection('contentItems')
 
-        # Применяем фильтр по статусу, если он не 'all'
+        # Apply status filter if it's not 'all'
         if status_filter != 'all':
             items_query = items_query.where('status', '==', status_filter)
 
-        # Сортировка по времени создания (новые в начале)
+        # Sort by creation time (newest first)
         items_query = items_query.order_by('timestamp', direction=firestore.Query.DESCENDING)
 
-        # Получаем документы
+        # Get documents
         items_docs = items_query.get()
 
         items = []
@@ -399,49 +399,49 @@ def admin_dashboard():
             item_data = doc.to_dict()
             item_data['itemId'] = doc.id
 
-            # Получаем все жалобы для этого элемента
+            # Get all reports for this item
             if status_filter == 'for_moderation' or status_filter == 'all':
                 reports_ref = db.collection('reports').where('contentId', '==', doc.id).get()
                 item_data['reports'] = [report.to_dict() for report in reports_ref]
 
-            # Добавляем отображаемое имя статуса
+            # Add display name for status
             status_map = {
-                'published': 'Опубликовано',
-                'for_moderation': 'На модерации',
-                'rejected': 'Отклонено'
+                'published': 'Published',
+                'for_moderation': 'For Moderation',
+                'rejected': 'Rejected'
             }
             item_data['status_display'] = status_map.get(item_data.get('status'), item_data.get('status'))
 
             items.append(item_data)
 
-        # Заголовок секции в зависимости от фильтра
+        # Section title depending on the filter
         section_titles = {
-            'all': 'Все публикации',
-            'for_moderation': 'Публикации на модерации',
-            'published': 'Опубликованные публикации',
-            'rejected': 'Отклоненные публикации'
+            'all': 'All Posts',
+            'for_moderation': 'Posts for Moderation',
+            'published': 'Published Posts',
+            'rejected': 'Rejected Posts'
         }
 
         return render_template('admin/dashboard.html', 
                               items=items, 
                               status=status_filter,
-                              section_title=section_titles.get(status_filter, 'Публикации'),
+                              section_title=section_titles.get(status_filter, 'Posts'),
                               admin_email=session.get('admin_email'))
 
     except Exception as e:
-        print(f"Ошибка при загрузке панели администратора: {e}")
+        print(f"Error loading admin dashboard: {e}")
         import traceback
         traceback.print_exc()
         return render_template('500.html'), 500
 
 @app.route('/admin/api/content/<content_id>/approve', methods=['POST'])
 def admin_approve_content(content_id):
-    # Проверка доступа администратора
+    # Administrator access check
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
 
     try:
-        # Обновляем статус публикации на 'published'
+        # Update post status to 'published'
         content_ref = db.collection('contentItems').document(content_id)
         content_ref.update({
             'status': 'published',
@@ -449,20 +449,20 @@ def admin_approve_content(content_id):
             'moderated_at': firestore.SERVER_TIMESTAMP
         })
 
-        return jsonify({'status': 'success', 'message': 'Публикация одобрена'})
+        return jsonify({'status': 'success', 'message': 'Post approved'})
 
     except Exception as e:
-        print(f"Ошибка при одобрении публикации: {e}")
+        print(f"Error approving post: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/admin/api/content/<content_id>/reject', methods=['POST'])
 def admin_reject_content(content_id):
-    # Проверка доступа администратора
+    # Administrator access check
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
 
     try:
-        # Обновляем статус публикации на 'rejected'
+        # Update post status to 'rejected'
         content_ref = db.collection('contentItems').document(content_id)
         content_ref.update({
             'status': 'rejected',
@@ -470,19 +470,19 @@ def admin_reject_content(content_id):
             'moderated_at': firestore.SERVER_TIMESTAMP
         })
 
-        return jsonify({'status': 'success', 'message': 'Публикация отклонена'})
+        return jsonify({'status': 'success', 'message': 'Post rejected'})
 
     except Exception as e:
-        print(f"Ошибка при отклонении публикации: {e}")
+        print(f"Error rejecting post: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# Фильтр для форматирования временных меток в шаблонах
+# Filter for formatting timestamps in templates
 @app.template_filter('datetime')
 def format_datetime(timestamp):
     if not timestamp:
         return ''
 
-    # Обработка различных типов временных меток Firestore
+    # Handle different Firestore timestamp types
     if isinstance(timestamp, dict):
         if '_seconds' in timestamp:
             timestamp = datetime.fromtimestamp(timestamp['_seconds'])
@@ -494,17 +494,17 @@ def format_datetime(timestamp):
 
     return str(timestamp)
 
-# --- ИЗМЕНЕНИЯ НАЧИНАЮТСЯ ЗДЕСЬ ---
+# --- CHANGES START HERE --- (This comment seems to be a leftover, removing)
 
 @app.route('/')
 def home():
     """
-    Маршрут для главной страницы, отображающей карту с реальными данными из Firestore.
+    Route for the main page, displaying a map with real data from Firestore.
     """
     items_for_map = []
     try:
-        # Запрашиваем все опубликованные элементы из коллекции 'contentItems'
-        # Сортируем по убыванию времени для отображения сначала новых (опционально)
+        # Request all published items from the 'contentItems' collection
+        # Sort by time descending to show newest first (optional)
         items_query = db.collection('contentItems') \
             .where('status', '==', 'published') \
             .order_by('voteCount', direction=firestore.Query.ASCENDING) \
@@ -513,11 +513,11 @@ def home():
 
         for item_doc in items_query:
             item_data = item_doc.to_dict()
-            item_data['itemId'] = item_doc.id  # Добавляем ID документа, может пригодиться
+            item_data['itemId'] = item_doc.id  # Add document ID, might be useful
 
-            # Убедимся, что есть широта и долгота
+            # Ensure latitude and longitude exist
             if 'latitude' in item_data and 'longitude' in item_data:
-                # Опционально: Преобразуем timestamp в строку, если нужно отображать в InfoWindow
+                # Optionally: Convert timestamp to string if needed for display in InfoWindow
                 # if isinstance(item_data.get('timestamp'), datetime):
                 #    item_data['timestamp'] = item_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
                 items_for_map.append(item_data)
@@ -527,74 +527,74 @@ def home():
         print(f"DEBUG: Loaded {len(items_for_map)} items from Firestore for the map.")
 
     except Exception as e:
-        print(f"Ошибка при загрузке данных из Firestore для карты: {e}")
-        # Можно передать пустой список или сообщение об ошибке в шаблон
+        print(f"Error loading data from Firestore for the map: {e}")
+        # Can pass an empty list or an error message to the template
         # items_for_map = []
-        # flash('Не удалось загрузить данные для карты.', 'error') # если используете flash сообщения
+        # flash('Failed to load data for the map.', 'error') # if using flash messages
 
     return render_template('index.html', items=items_for_map, maps_api_key=GOOGLE_MAPS_API_KEY)
 
 
-# --- API для взаимодействия с публикациями ---
+# --- API for interacting with posts ---
 
 @app.route('/api/content/<content_id>/vote', methods=['POST'])
 def vote_content(content_id):
-    """API для голосования за контент (лайк/дизлайк)"""
+    """API for voting on content (like/dislike)"""
     print(f"=== VOTE DEBUG INFO ===")
-    print(f"Получен запрос на голосование за content_id: {content_id}")
+    print(f"Received vote request for content_id: {content_id}")
     print(f"Headers: {dict(request.headers)}")
     print(f"Content-Type: {request.content_type}")
     print(f"Content-Length: {request.content_length}")
 
     try:
-        # Получаем данные из запроса
+        # Get data from request
         data = request.get_json()
-        print(f"Полученные данные: {data}")
+        print(f"Received data: {data}")
 
         if not data or 'vote' not in data:
-            print(f"Ошибка: отсутствует параметр vote в данных")
+            print(f"Error: missing vote parameter in data")
             return jsonify({'status': 'error', 'message': 'Missing vote parameter'}), 400
 
-        vote_value = data.get('vote')  # 1 для лайка, -1 для дизлайка
+        vote_value = data.get('vote')  # 1 for like, -1 for dislike
         user_id = data.get('userId') or request.headers.get('X-User-ID')
-        print(f"Значение vote: {vote_value}, user_id: {user_id}")
+        print(f"Vote value: {vote_value}, user_id: {user_id}")
 
         if not user_id:
-            print(f"Ошибка: отсутствует user_id")
+            print(f"Error: missing user_id")
             return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
 
         if vote_value not in [1, -1]:
-            print(f"Ошибка: недопустимое значение vote: {vote_value}")
+            print(f"Error: invalid vote value: {vote_value}")
             return jsonify({'status': 'error', 'message': 'Invalid vote value'}), 400
 
-        # Получаем документ из Firestore
+        # Get document from Firestore
         doc_ref = db.collection('contentItems').document(content_id)
-        print(f"Запрашиваем документ из Firestore: {content_id}")
+        print(f"Requesting document from Firestore: {content_id}")
         doc = doc_ref.get()
 
         if not doc.exists:
-            print(f"Ошибка: документ не найден в Firestore: {content_id}")
+            print(f"Error: document not found in Firestore: {content_id}")
             return jsonify({'status': 'error', 'message': 'Content not found'}), 404
 
-        print(f"Документ найден в Firestore: {content_id}")
+        print(f"Document found in Firestore: {content_id}")
         doc_data = doc.to_dict()
-        print(f"Данные документа: {doc_data}")
+        print(f"Document data: {doc_data}")
 
-        # Проверяем, не находится ли публикация на модерации
+        # Check if post is under moderation
         if doc_data.get('status') == 'for_moderation':
-            print(f"Публикация {content_id} находится на модерации, голосование запрещено")
+            print(f"Post {content_id} is under moderation, voting prohibited")
             return jsonify({
                 'status': 'error',
                 'message': 'Cannot vote for content under moderation'
             }), 403
 
-        # Проверяем, не голосовал ли этот пользователь уже
+        # Check if this user has already voted
         voters = doc_data.get('voters', {})
         if user_id in voters:
             previous_vote = voters[user_id]
-            print(f"Пользователь {user_id} уже голосовал за публикацию {content_id}, предыдущий голос: {previous_vote}")
+            print(f"User {user_id} already voted for post {content_id}, previous vote: {previous_vote}")
 
-            # Если голос такой же, возвращаем ошибку
+            # If the vote is the same, return an error
             if previous_vote == vote_value:
                 return jsonify({
                     'status': 'error',
@@ -604,23 +604,23 @@ def vote_content(content_id):
 
             vote_adjustment = vote_value
         else:
-            # Если пользователь голосует впервые, просто добавляем его голос
+            # If the user is voting for the first time, just add their vote
             vote_adjustment = vote_value
 
-        # Обновляем счетчик голосов
-        # Для простоты просто увеличиваем/уменьшаем, в реальном приложении
-        # нужно отслеживать IP/пользователей для предотвращения накрутки
+        # Update vote count
+        # For simplicity, just increment/decrement; in a real application,
+        # track IPs/users to prevent manipulation
         current_votes = doc_data.get('voteCount', 0)
-        print(f"Текущее количество голосов: {current_votes}")
+        print(f"Current vote count: {current_votes}")
 
         new_vote_count = current_votes + vote_adjustment
-        print(f"Новое количество голосов: {new_vote_count}")
+        print(f"New vote count: {new_vote_count}")
 
         try:
-            # Сохраняем информацию о пользователе и его голосе
+            # Save user information and their vote
             voters_update = {f'voters.{user_id}': vote_value}
 
-            # Записываем историю голосования
+            # Record vote history
             vote_history = {
                 'userId': user_id,
                 'value': vote_value,
@@ -633,9 +633,9 @@ def vote_content(content_id):
                 **voters_update,
                 'voteHistory': firestore.ArrayUnion([vote_history])
             })
-            print(f"Обновление документа успешно выполнено")
+            print(f"Document update successful")
         except Exception as e:
-            print(f"Ошибка при обновлении документа: {e}")
+            print(f"Error updating document: {e}")
             return jsonify({'status': 'error', 'message': f'Error updating vote count: {str(e)}'}), 500
 
         return jsonify({
@@ -645,30 +645,30 @@ def vote_content(content_id):
         })
 
     except Exception as e:
-        print(f"Ошибка при голосовании за контент {content_id}: {e}")
+        print(f"Error voting for content {content_id}: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/content/<content_id>/report', methods=['POST'])
 def report_content(content_id):
-    """API для жалобы на контент"""
+    """API for reporting content"""
     try:
-        # Получаем данные из запроса
+        # Get data from request
         data = request.get_json()
-        reason = data.get('reason', 'Не указана')
+        reason = data.get('reason', 'Not specified')
         user_id = data.get('userId') or request.headers.get('X-User-ID')
 
         if not user_id:
             return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
 
-        # Получаем документ из Firestore
+        # Get document from Firestore
         doc_ref = db.collection('contentItems').document(content_id)
         doc = doc_ref.get()
 
         if not doc.exists:
             return jsonify({'status': 'error', 'message': 'Content not found'}), 404
 
-        # Проверяем, не находится ли публикация уже на модерации
+        # Check if post is already under moderation
         doc_data = doc.to_dict()
         if doc_data.get('status') == 'for_moderation':
             return jsonify({
@@ -676,7 +676,7 @@ def report_content(content_id):
                 'message': 'This content is already under moderation'
             }), 403
 
-        # Проверяем, не жаловался ли этот пользователь уже
+        # Check if this user has already reported
         reports = doc_data.get('reports', [])
         reporters = [report.get('userId') for report in reports if 'userId' in report]
 
@@ -686,37 +686,37 @@ def report_content(content_id):
                 'message': 'You have already reported this content'
             }), 200
 
-        # Увеличиваем счетчик жалоб
+        # Increment report count
         doc_data = doc.to_dict()
         current_reports = doc_data.get('reportedCount', 0)
 
-        # Создаем объект жалобы с информацией о пользователе
+        # Create report object with user information
         report_data = {
             'reason': reason,
             'timestamp': datetime.utcnow(),
             'userId': user_id,
-            'isAnonymous': True  # Помечаем как анонимную жалобу
+            'isAnonymous': True  # Mark as anonymous report
         }
 
-        # Обновляем документ
+        # Update document
         doc_ref.update({
             'reportedCount': current_reports + 1,
             'reports': firestore.ArrayUnion([report_data]),
-            'reporters': firestore.ArrayUnion([user_id])  # Сохраняем список пользователей, отправивших жалобы
+            'reporters': firestore.ArrayUnion([user_id])  # Save list of users who reported
         })
 
-        # Если количество жалоб >= 3, помечаем контент как требующий модерации
+        # If report count >= 3, mark content as requiring moderation
         if current_reports + 1 >= 3 and doc_data.get('status') == 'published':
-            print(f"Публикация {content_id} достигла {current_reports + 1} жалоб, переводим в статус for_moderation")
+            print(f"Post {content_id} reached {current_reports + 1} reports, changing status to for_moderation")
             try:
                 doc_ref.update({
                     'status': 'for_moderation',
-                    'moderation_note': f'Автоматически отправлено на модерацию ({current_reports + 1} жалоб)',
+                    'moderation_note': f'Automatically sent for moderation ({current_reports + 1} reports)',
                     'moderation_timestamp': datetime.utcnow()
                 })
-                print(f"Статус публикации {content_id} успешно изменен на for_moderation")
+                print(f"Post status {content_id} successfully changed to for_moderation")
             except Exception as e:
-                print(f"Ошибка при изменении статуса публикации {content_id}: {e}")
+                print(f"Error changing post status {content_id}: {e}")
 
         return jsonify({
             'status': 'success',
@@ -724,13 +724,13 @@ def report_content(content_id):
         })
 
     except Exception as e:
-        print(f"Ошибка при отправке жалобы на контент {content_id}: {e}")
+        print(f"Error submitting report for content {content_id}: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
         @app.route('/api/content/create', methods=['POST'])
         def create_content():
             try:
-                # Получаем параметры из запроса
+                # Get parameters from request
                 text = request.form.get('text', '')
                 latitude = float(request.form.get('latitude'))
                 longitude = float(request.form.get('longitude'))
@@ -742,35 +742,35 @@ def report_content(content_id):
                 if not latitude or not longitude:
                     return jsonify({'status': 'error', 'message': 'Location coordinates are required'}), 400
 
-                # Проверяем, есть ли изображение в запросе
+                # Check if image is in request
                 image_url = None
                 if 'image' in request.files:
                     image = request.files['image']
                     if image.filename != '':
-                        # Генерируем уникальное имя файла
+                        # Generate unique filename
                         filename = secure_filename(image.filename)
                         file_extension = os.path.splitext(filename)[1]
                         unique_filename = f"{str(uuid.uuid4())}{file_extension}"
 
-                        # Создаем временный файл для загрузки
+                        # Create temporary file for upload
                         with tempfile.NamedTemporaryFile(delete=False) as temp:
                             image.save(temp.name)
 
-                            # Загружаем файл в Firebase Storage
+                            # Upload file to Firebase Storage
                             bucket = storage.bucket()
                             blob = bucket.blob(f"content_images/{unique_filename}")
                             blob.upload_from_filename(temp.name)
 
-                            # Делаем файл публичным
+                            # Make file public
                             blob.make_public()
 
-                            # Получаем URL изображения
+                            # Get image URL
                             image_url = blob.public_url
 
-                        # Удаляем временный файл
+                        # Delete temporary file
                         os.unlink(temp.name)
 
-                # Создаем новую запись в Firestore
+                # Create new record in Firestore
                 new_content = {
                     'text': text,
                     'imageUrl': image_url,
@@ -781,37 +781,37 @@ def report_content(content_id):
                     'isAnonymous': True,
                     'voteCount': 0,
                     'reportedCount': 0,
-                    'status': 'published'  # Начальный статус - опубликовано
+                    'status': 'published'  # Initial status - published
                 }
 
-                # Добавляем документ в коллекцию
+                # Add document to collection
                 doc_ref = db.collection('contentItems').document()
                 doc_ref.set(new_content)
 
-                # Обновляем id документа
+                # Update document id
                 doc_ref.update({
                     'itemId': doc_ref.id
                 })
 
                 return jsonify(dict(status='success', message='Content created successfully', contentId=doc_ref.id))
             except Exception as e:
-                print(f"Ошибка при создании контента: {e}")
+                print(f"Error creating content: {e}")
 
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-# --- КОНЕЦ API для взаимодействия с публикациями ---
+# --- END API for interacting with posts ---
 
 @app.route('/post/<item_id>')
 def post_view(item_id):
     """
-    Маршрут для просмотра конкретной публикации.
-    Карта центрируется на соответствующем маркере и маркер автоматически открывается.
+    Route for viewing a specific post.
+    The map is centered on the corresponding marker, and the marker is automatically opened.
     """
-    # Получаем все опубликованные элементы для карты
+    # Get all published items for the map
     items_for_map = []
     try:
-        # Запрашиваем все опубликованные элементы (такой же запрос, как в home())
+        # Request all published items (same query as in home())
         items_query = db.collection('contentItems') \
             .where('status', '==', 'published') \
             .order_by('voteCount', direction=firestore.Query.ASCENDING) \
@@ -824,21 +824,21 @@ def post_view(item_id):
             if 'latitude' in item_data and 'longitude' in item_data:
                 items_for_map.append(item_data)
     except Exception as e:
-        print(f"Ошибка при загрузке данных из Firestore для карты: {e}")
+        print(f"Error loading data from Firestore for the map: {e}")
 
-    # Получаем данные целевой публикации для SEO и метаданных
+    # Get target post data for SEO and metadata
     target_item_data = None
     try:
         doc_ref = db.collection('contentItems').document(item_id)
         doc = doc_ref.get()
         if doc.exists:
             target_item_data = doc.to_dict()
-            # Не забываем добавить ID, так как он не входит в данные документа
+            # Don't forget to add the ID, as it's not part of the document data
             target_item_data['itemId'] = item_id
     except Exception as e:
-        print(f"Ошибка при получении данных публикации {item_id}: {e}")
+        print(f"Error retrieving post data {item_id}: {e}")
 
-    # Передаем в шаблон все элементы для карты, ID целевого элемента и данные целевого элемента для SEO
+    # Pass all items for the map, target item ID, and target item data for SEO to the template
     return render_template(
         'index.html',
         items=items_for_map,
