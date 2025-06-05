@@ -2,3 +2,4 @@
 /.venv/
 /serviceAccountKey.json
 /.idea/
+/app.log

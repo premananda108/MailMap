@@ -1,8 +1,12 @@
 # email_utils.py
 import os
+import logging
 from datetime import datetime
 from firebase_admin import firestore
 # import requests # No longer needed for sending if using SMTP
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 # --- NEW IMPORTS for SMTP ---
 import smtplib
@@ -30,7 +34,7 @@ def create_email_notification_record(db_client, content_id, recipient_email):
     # ... (this function remains unchanged) ...
     try:
         if not all([db_client, content_id, recipient_email]):
-            print("Error in create_email_notification_record: Missing required parameters")
+            logger.error("Error in create_email_notification_record: Missing required parameters")
             return None
         notification_data = {
             'contentId': content_id,
@@ -49,12 +53,10 @@ def create_email_notification_record(db_client, content_id, recipient_email):
         }
         doc_ref = db_client.collection('emailNotifications').document()
         doc_ref.set(notification_data)
-        print(f"DEBUG: Email notification record created: {doc_ref.id} for {recipient_email}")
+        logger.info(f"Email notification record created: {doc_ref.id} for {recipient_email}")
         return doc_ref.id
     except Exception as e:
-        print(f"Error in create_email_notification_record: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in create_email_notification_record: {str(e)}", exc_info=True)
         return None
 
 

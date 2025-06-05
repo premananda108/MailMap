@@ -17,7 +17,45 @@ load_dotenv()
 
 from email_utils import create_email_notification_record, send_pending_notification
 
+# Configure logging
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+
+# Create Flask app
+# Configure logging
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+
+# Create Flask app
 app = Flask(__name__, static_folder='static')
+
+# Set up logging to file
+log_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
+log_handler.setLevel(logging.INFO)
+log_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+# Add the log handler to the app logger
+app.logger.addHandler(log_handler)
+# Output logs to stdout as well
+app.logger.addHandler(logging.StreamHandler(sys.stdout))
+app.logger.setLevel(logging.INFO)
+app.logger.info('Flask app startup')
+
+# Set up logging to file
+log_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
+log_handler.setLevel(logging.INFO)
+log_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+# Add the log handler to the app logger
+app.logger.addHandler(log_handler)
+# Output logs to stdout as well
+app.logger.addHandler(logging.StreamHandler(sys.stdout))
+app.logger.setLevel(logging.INFO)
+app.logger.info('Flask app startup')
 
 
 @app.route('/.well-known/appspecific/com.chrome.devtools.json')
@@ -60,7 +98,30 @@ if not firebase_admin._apps:
     })
 
 db = firestore.client()
+
+# Print server URLs at startup when in development mode
+def show_server_urls():
+    """Display server URLs in console when running in development mode"""
+    import socket
+    try:
+        # Get local IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+
+        # Print URLs in a way similar to Flask's development server
+        print(f"\n * Running on http://127.0.0.1:{os.environ.get('PORT', 8080)}")
+        print(f" * Running on http://{local_ip}:{os.environ.get('PORT', 8080)}")
+        print("Press CTRL+C to quit\n")
+    except Exception as e:
+        app.logger.error(f"Could not determine local IP: {e}")
 bucket = storage.bucket()
+
+# Register startup event handler
+with app.app_context():
+    # Initialize any application resources here
+    pass
 
 
 def verify_inbound_token(token_to_verify):
@@ -150,10 +211,10 @@ def save_content_to_firestore(data):
 def process_email_attachments(attachments):
     """Process email attachments"""
     if not attachments:
-        print("DEBUG: No attachments found in email.")
+        app.logger.info("No attachments found in email.")
         return None, None, None
 
-    print(f"DEBUG: Processing {len(attachments)} attachments.")
+    app.logger.info(f"Processing {len(attachments)} attachments.")
     for i, attachment in enumerate(attachments):
         content_type = attachment.get('ContentType', '')
         filename = attachment.get('Name', '')
@@ -219,24 +280,24 @@ def process_email_attachments(attachments):
 def postmark_webhook():
     token_from_query = request.args.get('token')
 
-    print(f"=== WEBHOOK DEBUG INFO ===")
-    print(f"Received request with token from query: {token_from_query}")
-    print(f"Expected token: {INBOUND_URL_TOKEN}")
-    print(f"Method: {request.method}")
-    print(f"Headers: {dict(request.headers)}")
-    print(f"Content-Type: {request.content_type}")
-    print(f"Content-Length: {request.content_length}")
+    app.logger.info(f"=== WEBHOOK DEBUG INFO ===")
+    app.logger.info(f"Received request with token from query: {token_from_query}")
+    app.logger.info(f"Expected token: {INBOUND_URL_TOKEN}")
+    app.logger.info(f"Method: {request.method}")
+    app.logger.info(f"Headers: {dict(request.headers)}")
+    app.logger.info(f"Content-Type: {request.content_type}")
+    app.logger.info(f"Content-Length: {request.content_length}")
 
     try:
         raw_data = request.get_data()
-        print(f"Raw data length: {len(raw_data) if raw_data else 0}")
+        app.logger.info(f"Raw data length: {len(raw_data) if raw_data else 0}")
 
         data = request.get_json(force=True)
-        print(f"JSON data received: {bool(data)}")
+        app.logger.info(f"JSON data received: {bool(data)}")
         if data:
-            print(f"JSON keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+            app.logger.info(f"JSON keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
     except Exception as e:
-        print(f"Error getting request data: {e}")
+        app.logger.error(f"Error getting request data: {e}")
         return jsonify({
             'status': 'error',
             'message': f'Error parsing request data: {str(e)}'
@@ -540,11 +601,11 @@ def home():
 @app.route('/api/content/<content_id>/vote', methods=['POST'])
 def vote_content(content_id):
     """API for voting on content (like/dislike)"""
-    print(f"=== VOTE DEBUG INFO ===")
-    print(f"Received vote request for content_id: {content_id}")
-    print(f"Headers: {dict(request.headers)}")
-    print(f"Content-Type: {request.content_type}")
-    print(f"Content-Length: {request.content_length}")
+    app.logger.info(f"=== VOTE DEBUG INFO ===")
+    app.logger.info(f"Received vote request for content_id: {content_id}")
+    app.logger.info(f"Headers: {dict(request.headers)}")
+    app.logger.info(f"Content-Type: {request.content_type}")
+    app.logger.info(f"Content-Length: {request.content_length}")
 
     try:
         # Get data from request
@@ -849,4 +910,6 @@ def post_view(item_id):
 
 
 if __name__ == '__main__':
+    # Show server URLs before starting
+    show_server_urls()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
