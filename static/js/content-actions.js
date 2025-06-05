@@ -87,7 +87,12 @@ function reportContent(contentId, event) {
 }
 
 // Function for sharing on social media
-function shareOnSocialMedia(platform, url, title, imageUrl) {
+function shareOnSocialMedia(platform, url, title, imageUrl, event) {
+    // Предотвращаем распространение события, если оно передано
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
     // Validate input data and convert to string
     url = String(url || window.location.href);
     title = String(title || 'Like me! Post on MailMap'); // Default title in English
@@ -128,6 +133,7 @@ function shareOnSocialMedia(platform, url, title, imageUrl) {
         }
 
         // Open sharing window
+        console.log('Sharing data:', { platform, url, cleanTitle, imageUrl, shareUrl });
         window.open(shareUrl, '_blank', 'width=600,height=400,resizable=yes,scrollbars=yes');
 
         // For analytics - can add tracking for sharing events

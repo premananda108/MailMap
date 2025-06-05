@@ -217,15 +217,23 @@ function createInfoWindowContent(item) {
     // Add event delegation for share buttons
     setTimeout(() => {
         document.querySelectorAll('.share-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
+            // Удаляем все существующие обработчики перед добавлением нового
+            const shareHandler = function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const platform = this.getAttribute('data-platform');
                 const url = this.getAttribute('data-url');
                 const text = decodeURIComponent(this.getAttribute('data-text'));
                 const image = this.getAttribute('data-image');
-                shareOnSocialMedia(platform, url, text, image);
-            });
+                shareOnSocialMedia(platform, url, text, image, e);
+            };
+
+            // Удаляем старые обработчики
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+
+            // Добавляем новый обработчик
+            newBtn.addEventListener('click', shareHandler);
         });
     }, 100);
     
