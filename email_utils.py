@@ -3,39 +3,59 @@ import os
 import logging
 from datetime import datetime
 from firebase_admin import firestore
+
 # import requests # No longer needed for sending if using SMTP
 
 # Configure module logger
+# This logger will inherit the configuration from the Flask app logger if this module
+# is imported after the Flask app's logging is configured.
+# If run obstáculos, it would need its own handler configuration.
 logger = logging.getLogger(__name__)
+# To ensure it logs if run standalone or if Flask logger isn't set to a low enough level:
+# if not logger.handlers: # Add a basic handler if no handlers are configured
+#     logger.setLevel(logging.INFO) # Or DEBUG
+#     ch = logging.StreamHandler()
+#     ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+#     logger.addHandler(ch)
 
-# --- NEW IMPORTS for SMTP ---
+
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.header import Header  # For correct handling of non-ASCII characters in subject
-from email.utils import formataddr  # For formatting From/To with names
-# --- END OF NEW IMPORTS ---
+from email.header import Header
+from email.utils import formataddr
 
 from flask import render_template
 
+# Environment variables for email configuration
 POSTMARK_SERVER_TOKEN = os.environ.get("POSTMARK_SERVER_TOKEN", "YOUR_POSTMARK_SERVER_TOKEN_HERE")
 SENDER_EMAIL_ADDRESS = os.environ.get("SENDER_EMAIL_ADDRESS", "noreply@example.com")
-SENDER_NAME = os.environ.get("SENDER_NAME", "MailMap")  # Optional: sender name
+SENDER_NAME = os.environ.get("SENDER_NAME", "MailMap")
 BASE_URL = os.environ.get("BASE_URL", "https://mailmap.premananda.site")
 
-# SMTP Postmark Configuration
+# SMTP Configuration
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.postmarkapp.com")
-SMTP_PORT = os.environ.get("SMTP_PORT", "587")  # Recommended port for TLS/STARTTLS
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_PORT_STR = os.environ.get("SMTP_PORT", "587")
+try:
+    SMTP_PORT = int(SMTP_PORT_STR)
+except ValueError:
+    logger.error(f"Invalid SMTP_PORT value: '{SMTP_PORT_STR}'. Defaulting to 587.")
+    SMTP_PORT = 587
+
+# For Postmark SMTP, USERNAME and PASSWORD are the Server API Token.
+# Ensure these environment variables are set to your POSTMARK_SERVER_TOKEN
+# or modify the server.login() call to use POSTMARK_SERVER_TOKEN directly.
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", POSTMARK_SERVER_TOKEN)  # Default to POSTMARK_SERVER_TOKEN
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", POSTMARK_SERVER_TOKEN)  # Default to POSTMARK_SERVER_TOKEN
 
 
 def create_email_notification_record(db_client, content_id, recipient_email):
-    # ... (this function remains unchanged) ...
+    """Creates a record in Firestore about the need to send an email notification."""
     try:
         if not all([db_client, content_id, recipient_email]):
-            logger.error("Error in create_email_notification_record: Missing required parameters")
+            logger.error("Missing required parameters for creating email notification record.")
             return None
+
         notification_data = {
             'contentId': content_id,
             'recipientEmail': recipient_email,
@@ -56,36 +76,40 @@ def create_email_notification_record(db_client, content_id, recipient_email):
         logger.info(f"Email notification record created: {doc_ref.id} for {recipient_email}")
         return doc_ref.id
     except Exception as e:
-        logger.error(f"Error in create_email_notification_record: {str(e)}", exc_info=True)
+        logger.error(f"Error in create_email_notification_record for content_id {content_id}: {e}", exc_info=True)
         return None
 
 
 def send_pending_notification(db_client, notification_id, app_context=None):
+    """
+    Loads a pending notification, sends an email using an HTML template, and updates its status.
+    """
     notification_ref = db_client.collection('emailNotifications').document(notification_id)
     notification_doc = None
     try:
         notification_doc = notification_ref.get()
         if not notification_doc.exists:
-            print(f"Error: Notification record {notification_id} not found.")
+            logger.error(f"Notification record {notification_id} not found.")
             return False
 
         notification_data = notification_doc.to_dict()
+
         STATUS_PENDING = 'pending'
-        STATUS_SENT = 'sent'
-        STATUS_FAILED = 'failed'
-        # ...
+        # STATUS_SENT = 'sent' # Defined but not used for comparison, only for update
+        # STATUS_FAILED = 'failed' # Defined but not used for comparison, only for update
+
         if notification_data.get('status') != STATUS_PENDING:
-            print(
-                f"Notification {notification_id} is not pending (status: {notification_data.get('status')}). Skipping.")
-            return True
+            logger.info(
+                f"Notification {notification_id} is not pending (status: {notification_data.get('status')}). Skipping."
+            )
+            return True  # Not an error, just nothing to do for this notification
 
         content_id = notification_data.get('contentId')
         recipient_email = notification_data.get('recipientEmail')
 
         if not content_id or not recipient_email:
-            # ... (error handling remains) ...
-            error_msg = f"Notification {notification_id} does not contain contentId or recipientEmail."
-            print(f"Error: {error_msg}")
+            error_msg = f"Notification {notification_id} is missing contentId or recipientEmail."
+            logger.error(error_msg)
             notification_ref.update({
                 'status': 'failed', 'lastError': error_msg, 'updatedAt': datetime.utcnow(),
                 'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
@@ -95,9 +119,8 @@ def send_pending_notification(db_client, notification_id, app_context=None):
         content_ref = db_client.collection('contentItems').document(content_id)
         content_doc = content_ref.get()
         if not content_doc.exists:
-            # ... (error handling remains) ...
             error_msg = f"Content item {content_id} for notification {notification_id} not found."
-            print(f"Error: {error_msg}")
+            logger.error(error_msg)
             notification_ref.update({
                 'status': 'failed', 'lastError': error_msg, 'updatedAt': datetime.utcnow(),
                 'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
@@ -130,114 +153,107 @@ def send_pending_notification(db_client, notification_id, app_context=None):
             'subject_title': original_subject_text
         }
 
-        html_body = None  # Initialize in case something goes wrong
-
         try:
             if app_context:
-                # If app_context is provided (e.g., from a background task),
-                # use it for template rendering.
                 with app_context:
                     html_body = render_template('email_notification.html', **template_context)
             else:
-                # If app_context is not provided (e.g., call from a Flask view function),
-                # render_template will try to find an existing application context.
-                # If no context exists, a RuntimeError will occur here.
                 html_body = render_template('email_notification.html', **template_context)
-
         except RuntimeError as e:
-            # This error occurs if render_template is called without an active Flask context
-            # (and app_context was not provided or did not work).
             if "Working outside of application context" in str(e):
-                print(
-                    "Information: Rendering template outside/without active Flask application context. Using text fallback.")
-                html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"  # Use simple HTML from text body
+                logger.info("Rendering template outside/without active Flask application context. Using text fallback.")
+                html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"
             else:
-                # If it's another RuntimeError not related to missing context,
-                # it's better to re-raise it to avoid hiding another problem.
-                raise e
+                logger.error(f"RuntimeError rendering template 'email_notification.html': {e}", exc_info=True)
+                raise  # Re-raise if it's not the expected context error
         except Exception as e:
-            # Catch other possible errors during rendering (e.g., TemplateNotFound if template is not found)
-            print(f"Error rendering template 'email_notification.html': {e}. Using text fallback.")
+            logger.error(f"Error rendering template 'email_notification.html': {e}. Using text fallback.",
+                         exc_info=True)
             html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"
 
-        # Additional check in case html_body remains None for some reason
-        # (e.g., if render_template returned None, although it usually raises an exception on error)
-        if html_body is None:
-            print("WARNING: html_body was not generated (remained None). Using text fallback.")
+        if html_body is None:  # Should ideally not happen if exceptions are caught
+            logger.warning("html_body was not generated (remained None after render attempts). Using text fallback.")
             html_body = f"<p>{text_body.replace(chr(10), '<br>')}</p>"
 
-        print(f"Attempting to send email (SMTP) for notification {notification_id} to {recipient_email}")
+        logger.info(f"Attempting to send email (SMTP) for notification {notification_id} to {recipient_email}")
 
-        if POSTMARK_SERVER_TOKEN == "YOUR_POSTMARK_SERVER_TOKEN_HERE" or not POSTMARK_SERVER_TOKEN:
-            print(
-                "WARNING: Postmark server token (SMTP_USERNAME/PASSWORD) is not configured. Email will not be sent.")
-            raise Exception("Postmark server token (SMTP_USERNAME/PASSWORD) is not configured.")
+        if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_USERNAME == "YOUR_POSTMARK_SERVER_TOKEN_HERE":
+            logger.error(
+                "SMTP_USERNAME or SMTP_PASSWORD is not configured correctly (is it still the placeholder or empty?). Email will not be sent.")
+            # Update notification record to reflect this configuration error
+            notification_ref.update({
+                'status': 'failed', 'lastError': "SMTP credentials not configured on server.",
+                'updatedAt': datetime.utcnow(), 'lastAttemptAt': datetime.utcnow(),
+                'attempts': firestore.Increment(1)
+            })
+            return False  # Critical configuration error
 
-        # --- NEW EMAIL SENDING LOGIC via SMTP ---
         msg = MIMEMultipart('alternative')
-        # Use formataddr for correct display of sender name if present
         msg['From'] = formataddr((str(Header(SENDER_NAME, 'utf-8')), SENDER_EMAIL_ADDRESS))
         msg['To'] = recipient_email
-        # Use Header for correct handling of non-ASCII characters in subject
         msg['Subject'] = Header(email_subject_text, 'utf-8')
 
-        # Attach text and HTML versions
-        # Important: text first, then HTML
         part1 = MIMEText(text_body, 'plain', 'utf-8')
         part2 = MIMEText(html_body, 'html', 'utf-8')
-
         msg.attach(part1)
         msg.attach(part2)
 
-        smtp_error = None
+        smtp_error_message = None
+        email_sent_successfully = False
         try:
-            # Connect to Postmark SMTP server
             server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-            server.ehlo()  # Greet the server
-            server.starttls()  # Enable TLS encryption
-            server.ehlo()  # Re-greet after STARTTLS
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)  # Authenticate
-            server.sendmail(SENDER_EMAIL_ADDRESS, [recipient_email], msg.as_string())  # Send email
-            server.quit()  # Close connection
-            print(f"Email (SMTP) for notification {notification_id} sent successfully to {recipient_email}.")
-            email_sent_status = True
-        except smtplib.SMTPException as e:  # Catch specific SMTP errors
-            smtp_error = f"SMTP Error: {str(e)}"
-            print(f"Error sending email (SMTP) for notification {notification_id}: {smtp_error}")
-            email_sent_status = False
-        except Exception as e:  # Catch other possible errors (e.g., network issues)
-            smtp_error = f"General error during SMTP sending: {str(e)}"
-            print(f"Error sending email (SMTP) for notification {notification_id}: {smtp_error}")
-            email_sent_status = False
-        # --- END OF NEW SMTP LOGIC ---
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            logger.info(
+                f"Attempting SMTP login with username: {SMTP_USERNAME[:5]}...")  # Log part of username for security
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SENDER_EMAIL_ADDRESS, [recipient_email], msg.as_string())
+            server.quit()
+            logger.info(f"Email (SMTP) for notification {notification_id} sent successfully to {recipient_email}.")
+            email_sent_successfully = True
+        except smtplib.SMTPAuthenticationError as e:
+            smtp_error_message = f"SMTP Authentication Error: {e}. Check SMTP_USERNAME and SMTP_PASSWORD."
+            logger.error(f"SMTP Authentication Error for notification {notification_id}: {e}")
+            email_sent_successfully = False
+        except smtplib.SMTPException as e:
+            smtp_error_message = f"SMTP Error: {e}"
+            logger.error(f"SMTP Error sending email for notification {notification_id}: {e}", exc_info=True)
+            email_sent_successfully = False
+        except Exception as e:
+            smtp_error_message = f"General error during SMTP sending: {e}"
+            logger.error(f"General error sending email (SMTP) for notification {notification_id}: {e}", exc_info=True)
+            email_sent_successfully = False
 
         current_time = datetime.utcnow()
-        if email_sent_status:
-            notification_ref.update({
-                'status': 'sent', 'updatedAt': current_time, 'lastAttemptAt': current_time,
-                'attempts': firestore.Increment(1), 'lastError': None
-            })
-            return True
+        update_data = {
+            'updatedAt': current_time,
+            'lastAttemptAt': current_time,
+            'attempts': firestore.Increment(1)
+        }
+        if email_sent_successfully:
+            update_data['status'] = 'sent'
+            update_data['lastError'] = None
         else:
-            notification_ref.update({
-                'status': 'failed', 'lastError': smtp_error or "Unknown SMTP error",
-                'updatedAt': current_time, 'lastAttemptAt': current_time,
-                'attempts': firestore.Increment(1)
-            })
-            return False
+            update_data['status'] = 'failed'
+            update_data['lastError'] = smtp_error_message or "Unknown SMTP error during send process"
+
+        notification_ref.update(update_data)
+        return email_sent_successfully
 
     except Exception as e:
-        # ... (critical error handling remains) ...
         error_str = str(e)
-        print(f"Critical error in send_pending_notification for {notification_id}: {error_str}")
-        import traceback
-        traceback.print_exc()
+        logger.critical(f"Critical unhandled error in send_pending_notification for {notification_id}: {error_str}",
+                        exc_info=True)
+        # Attempt to update notification record even on critical failure before this point
         try:
-            if notification_doc and notification_doc.exists:
+            if notification_doc and notification_doc.exists and notification_data.get('status') == STATUS_PENDING:
                 notification_ref.update({
-                    'status': 'failed', 'lastError': error_str, 'updatedAt': datetime.utcnow(),
-                    'lastAttemptAt': datetime.utcnow(), 'attempts': firestore.Increment(1)
+                    'status': 'failed', 'lastError': f"Critical function error: {error_str}",
+                    'updatedAt': datetime.utcnow(), 'lastAttemptAt': datetime.utcnow(),
+                    'attempts': firestore.Increment(1)
                 })
         except Exception as inner_e:
-            print(f"Failed to update notification status {notification_id} after critical error: {inner_e}")
+            logger.error(
+                f"Failed to update notification status {notification_id} after critical error in outer try-except: {inner_e}")
         return False

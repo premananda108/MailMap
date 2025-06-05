@@ -5,211 +5,138 @@ import tempfile
 from datetime import datetime
 import uuid
 from dotenv import load_dotenv
-from image_utils import extract_gps_coordinates
+from image_utils import extract_gps_coordinates  # Assuming this is handled
 from flask import Flask, request, jsonify, current_app, \
     render_template, session, redirect, url_for
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from werkzeug.utils import secure_filename
 
-# Load environment variables from .env file
 load_dotenv()
 
-from email_utils import create_email_notification_record, send_pending_notification
+from email_utils import create_email_notification_record, send_pending_notification  # Assuming this is handled
 
-# Configure logging
 import logging
 from logging.handlers import RotatingFileHandler
-import sys
 
-# Create Flask app
-# Configure logging
-import logging
-from logging.handlers import RotatingFileHandler
-import sys
-
-# Create Flask app
 app = Flask(__name__, static_folder='static')
 
-# Set up logging to file
-log_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
-log_handler.setLevel(logging.INFO)
-log_handler.setFormatter(logging.Formatter(
-    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-))
-# Add the log handler to the app logger
-app.logger.addHandler(log_handler)
-# Output logs to stdout as well
-app.logger.addHandler(logging.StreamHandler(sys.stdout))
+# Set up logging
 app.logger.setLevel(logging.INFO)
-app.logger.info('Flask app startup')
 
-# Set up logging to file
-log_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
-log_handler.setLevel(logging.INFO)
-log_handler.setFormatter(logging.Formatter(
+file_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
+file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 ))
-# Add the log handler to the app logger
-app.logger.addHandler(log_handler)
-# Output logs to stdout as well
-app.logger.addHandler(logging.StreamHandler(sys.stdout))
-app.logger.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
 app.logger.info('Flask app startup')
 
 
 @app.route('/.well-known/appspecific/com.chrome.devtools.json')
 def chrome_devtools():
-    # Respond with an empty JSON object for Chrome DevTools requests
     return jsonify({})
 
 
 @app.before_request
 def check_content_length():
-    # Only check for POST, PUT, PATCH, DELETE methods as GET, HEAD, OPTIONS typically don't have bodies
     if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-        # Allow if content_length is explicitly set to 0
         if request.content_length is None and request.headers.get('Transfer-Encoding', '').lower() != 'chunked':
-            # Log the situation for debugging
             current_app.logger.warning(
                 f"Request to {request.path} from {request.remote_addr} without Content-Length or chunked encoding."
             )
-            # Consider returning 411 Length Required, but be cautious as some clients might not handle it well.
-            # For now, we'll log and let it proceed, as the 'unexpected EOF' might be due to other reasons.
-            # abort(411, description="Content-Length header is required for this request.")
-            pass  # Or decide on a specific action, like abort(400) or abort(411)
+            pass
 
 
 # Configuration
-INBOUND_URL_TOKEN = os.environ.get('INBOUND_URL_TOKEN', 'INBOUND_URL_TOKEN')
+INBOUND_URL_TOKEN = os.environ.get('INBOUND_URL_TOKEN', 'DEFAULT_INBOUND_TOKEN_IF_NOT_SET')
 FIREBASE_STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', 'your-project.appspot.com')
 GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SECRET_KEY',
-                                                                   'default-secret-key-for-development')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-secret-key-for-development')
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif'}
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_IMAGE_SIZE = 6 * 1024 * 1024  # 6MB
 
 # Firebase Initialization
 if not firebase_admin._apps:
-    # For production, use a service account key
-    cred = credentials.ApplicationDefault()  # or credentials.Certificate('path/to/serviceAccountKey.json')
+    cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred, {
         'storageBucket': FIREBASE_STORAGE_BUCKET
     })
 
 db = firestore.client()
+bucket = storage.bucket()  # Initialize bucket here after firebase_admin.initialize_app
 
-# Print server URLs at startup when in development mode
-def show_server_urls():
-    """Display server URLs in console when running in development mode"""
+
+def show_server_urls():  # This function uses print, intended for local dev startup
     import socket
     try:
-        # Get local IP address
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
-
-        # Print URLs in a way similar to Flask's development server
         print(f"\n * Running on http://127.0.0.1:{os.environ.get('PORT', 8080)}")
         print(f" * Running on http://{local_ip}:{os.environ.get('PORT', 8080)}")
         print("Press CTRL+C to quit\n")
     except Exception as e:
         app.logger.error(f"Could not determine local IP: {e}")
-bucket = storage.bucket()
 
-# Register startup event handler
+
 with app.app_context():
-    # Initialize any application resources here
     pass
 
 
 def verify_inbound_token(token_to_verify):
-    """Verify token for inbound requests"""
     if not token_to_verify:
         return False
     return token_to_verify == INBOUND_URL_TOKEN
 
 
-
 def parse_location_from_subject(subject):
-    """Parse coordinates from email subject in lat:XX.XXX,lng:YY.YYY format"""
     if not subject:
         return None, None
-
-    # Search for lat:XX.XXX,lng:YY.YYY pattern
     pattern = r'lat:([-+]?\d*\.?\d+),lng:([-+]?\d*\.?\d+)'
     match = re.search(pattern, subject, re.IGNORECASE)
-
     if match:
         try:
             lat = float(match.group(1))
             lng = float(match.group(2))
-
-            # Validate coordinates
             if -90 <= lat <= 90 and -180 <= lng <= 180:
                 return lat, lng
         except ValueError:
             pass
-
     return None, None
 
 
 def upload_image_to_gcs(image_data, filename):
-    """Upload image to Google Cloud Storage"""
     try:
-        # Generate unique filename
         file_extension = filename.split('.')[-1].lower()
         unique_filename = f"content_images/{uuid.uuid4()}.{file_extension}"
-
-        # Create blob in bucket
         blob = bucket.blob(unique_filename)
-
-        # Upload file
         blob.upload_from_string(
             image_data,
             content_type=f'image/{file_extension}'
         )
-
-        # Make file publicly accessible
         blob.make_public()
-
         return blob.public_url
-
     except Exception as e:
-        print(f"Error uploading image to GCS: {e}")
+        app.logger.error(f"Error uploading image to GCS: {filename}. Error: {e}", exc_info=True)
         return None
 
 
 def save_content_to_firestore(data):
-    """Save content to Firestore with additional fields for the notification system."""
     try:
-        # Add fields for tracking notification status
-        data['notificationSent'] = False  # Has the publication notification been sent
-        data['notificationSentAt'] = None  # Time the notification was sent
-
-        # Add shortUrl for use in short links (e.g., base62 of itemId)
-        # This field will be populated after the document is created, when the ID is known
+        data['notificationSent'] = False
+        data['notificationSentAt'] = None
         data['shortUrl'] = None
-
         doc_ref = db.collection('contentItems').document()
         doc_ref.set(data)
-
-        # Now that we have the document ID, we can create a shortUrl
-        # For simplicity, we use the ID itself, but in production,
-        # shorter identifiers or hashes could be used
-        doc_ref.update({
-            'shortUrl': doc_ref.id  # In the future, a function for generating a short URL can be used here
-        })
-
+        doc_ref.update({'shortUrl': doc_ref.id})
         return doc_ref.id
     except Exception as e:
-        print(f"Error saving to Firestore: {e}")
+        app.logger.error(f"Error saving to Firestore. Data: {str(data)[:200]}. Error: {e}", exc_info=True)
         return None
 
 
 def process_email_attachments(attachments):
-    """Process email attachments"""
     if not attachments:
         app.logger.info("No attachments found in email.")
         return None, None, None
@@ -218,688 +145,480 @@ def process_email_attachments(attachments):
     for i, attachment in enumerate(attachments):
         content_type = attachment.get('ContentType', '')
         filename = attachment.get('Name', '')
-        content = attachment.get('Content', '')  # Base64 encoded
+        content = attachment.get('Content', '')
 
-        print(f"DEBUG: Attachment {i + 1}: Name='{filename}', ContentType='{content_type}', HasContent={bool(content)}")
+        app.logger.debug(
+            f"Attachment {i + 1}: Name='{filename}', ContentType='{content_type}', HasContent={bool(content)}")
 
-        # Check if it's an image
         if not content_type.startswith('image/'):
-            print(f"DEBUG: Attachment {i + 1} ('{filename}') is not an image (ContentType: {content_type}). Skipping.")
+            app.logger.debug(
+                f"Attachment {i + 1} ('{filename}') is not an image (ContentType: {content_type}). Skipping.")
             continue
-
-        # Check file extension
         if not filename or '.' not in filename:
-            print(f"DEBUG: Attachment {i + 1} ('{filename}') has no extension. Skipping.")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}') has no extension. Skipping.")
             continue
         file_extension = filename.split('.')[-1].lower()
         if file_extension not in ALLOWED_IMAGE_EXTENSIONS:
-            print(f"DEBUG: Attachment {i + 1} ('{filename}') has unsupported extension '{file_extension}'. Skipping.")
+            app.logger.debug(
+                f"Attachment {i + 1} ('{filename}') has unsupported extension '{file_extension}'. Skipping.")
             continue
-
         try:
-            # Decode base64
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): Attempting to decode Base64 content.")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Attempting to decode Base64 content.")
             image_data = base64.b64decode(content)
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): Decoded. Image data length: {len(image_data)} bytes.")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Decoded. Image data length: {len(image_data)} bytes.")
 
-            # Check file size
             if len(image_data) > MAX_IMAGE_SIZE:
-                print(
-                    f"DEBUG: File {filename} is too large ({len(image_data)} bytes). MAX_IMAGE_SIZE is {MAX_IMAGE_SIZE}. Skipping.")
+                app.logger.warning(
+                    f"File {filename} is too large ({len(image_data)} bytes). MAX_IMAGE_SIZE is {MAX_IMAGE_SIZE}. Skipping.")
                 continue
 
-            # Extract GPS coordinates
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): Extracting EXIF GPS data.")
-            lat, lng = extract_gps_coordinates(image_data)
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): EXIF GPS: lat={lat}, lng={lng}")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Extracting EXIF GPS data.")
+            lat, lng = extract_gps_coordinates(image_data)  # Assuming this function is defined in image_utils
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): EXIF GPS: lat={lat}, lng={lng}")
 
-            # Upload to GCS
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): Uploading to GCS.")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Uploading to GCS.")
             image_url = upload_image_to_gcs(image_data, filename)
-            print(f"DEBUG: Attachment {i + 1} ('{filename}'): GCS URL: {image_url}")
+            app.logger.debug(f"Attachment {i + 1} ('{filename}'): GCS URL: {image_url}")
 
             if image_url:
-                print(f"DEBUG: Attachment {i + 1} ('{filename}'): Successfully processed. Returning URL: {image_url}")
+                app.logger.info(
+                    f"Attachment {i + 1} ('{filename}'): Successfully processed. Returning URL: {image_url}")
                 return image_url, lat, lng
             else:
-                print(
-                    f"DEBUG: Attachment {i + 1} ('{filename}'): Failed to upload to GCS or get URL. Continuing to next attachment.")
-
-
+                app.logger.warning(
+                    f"Attachment {i + 1} ('{filename}'): Failed to upload to GCS or get URL. Continuing to next attachment.")
         except Exception as e:
-            print(f"Error processing attachment {filename}: {e}")
-            import traceback
-            traceback.print_exc()  # Print full traceback for errors
+            app.logger.error(f"Error processing attachment {filename}: {e}", exc_info=True)
             continue
-
-    print("DEBUG: END OF LOOP IN process_email_attachments. BEFORE FINAL RETURN.")
+    app.logger.debug("Finished processing attachments loop.")
     return None, None, None
 
 
 @app.route('/webhook/postmark', methods=['POST'])
 def postmark_webhook():
     token_from_query = request.args.get('token')
-
-    app.logger.info(f"=== WEBHOOK DEBUG INFO ===")
-    app.logger.info(f"Received request with token from query: {token_from_query}")
-    app.logger.info(f"Expected token: {INBOUND_URL_TOKEN}")
-    app.logger.info(f"Method: {request.method}")
-    app.logger.info(f"Headers: {dict(request.headers)}")
-    app.logger.info(f"Content-Type: {request.content_type}")
-    app.logger.info(f"Content-Length: {request.content_length}")
+    app.logger.info(f"Postmark webhook called. Token from query: {token_from_query}")
 
     try:
-        raw_data = request.get_data()
-        app.logger.info(f"Raw data length: {len(raw_data) if raw_data else 0}")
-
-        data = request.get_json(force=True)
-        app.logger.info(f"JSON data received: {bool(data)}")
-        if data:
-            app.logger.info(f"JSON keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+        data = request.get_json(force=True)  # Consider removing force=True and checking Content-Type
+        if not data:
+            app.logger.warning(f"No JSON data received in Postmark webhook from {request.remote_addr}.")
+            return jsonify({'status': 'error', 'message': 'No JSON data received'}), 400
     except Exception as e:
-        app.logger.error(f"Error getting request data: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': f'Error parsing request data: {str(e)}'
-        }), 400
+        app.logger.error(f"Error parsing JSON data in Postmark webhook: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Error parsing request data: {str(e)}'}), 400
 
     if not verify_inbound_token(token_from_query):
-        print("Invalid token in URL query parameter")
+        app.logger.warning(
+            f"Invalid token in Postmark webhook URL from {request.remote_addr}. Token: {token_from_query}")
         return jsonify({'status': 'error', 'message': 'Invalid token'}), 401
 
     try:
-        if not data:
-            print("No JSON data received")
-            return jsonify({'status': 'error', 'message': 'No JSON data received'}), 400
-
         from_email = data.get('FromFull', {}).get('Email', '') if data.get('FromFull') else data.get('From', '')
         subject = data.get('Subject', '')
         text_body = data.get('TextBody', '')
         html_body = data.get('HtmlBody', '')
         attachments = data.get('Attachments', [])
 
-        print(f"Received email from {from_email} with subject: {subject}")
-        print(f"Number of attachments: {len(attachments)}")
+        app.logger.info(
+            f"Received email via Postmark from {from_email} with subject: '{subject}'. Attachments: {len(attachments)}")
 
         image_url, exif_lat, exif_lng = process_email_attachments(attachments)
 
         if not image_url:
-            print("No suitable images found in attachments")
-            return jsonify({'status': 'error', 'message': 'No valid images found'}), 400
+            app.logger.warning(
+                f"No suitable images found in attachments from email by {from_email}, subject: '{subject}'.")
+            return jsonify({'status': 'error', 'message': 'No valid images found in attachments'}), 400
 
         latitude, longitude = exif_lat, exif_lng
-
         if latitude is None or longitude is None:
             subject_lat, subject_lng = parse_location_from_subject(subject)
             if subject_lat is not None and subject_lng is not None:
                 latitude, longitude = subject_lat, subject_lng
+                app.logger.info(f"Used coordinates from subject: lat={latitude}, lng={longitude}")
 
         if latitude is None or longitude is None:
-            print("Could not determine coordinates for the post")
+            app.logger.warning(f"Could not determine coordinates for post from {from_email}, subject: '{subject}'.")
             return jsonify({
                 'status': 'error',
                 'message': 'Location coordinates not found. Please include GPS data in image or specify in subject as lat:XX.XXX,lng:YY.YYY'
-            }), 200
+            }), 200  # 200 to prevent Postmark retries for content issues
 
         content_data = {
-            'submitterEmail': from_email,
-            'text': text_body or html_body,
-            'imageUrl': image_url,
-            'latitude': latitude,
-            'longitude': longitude,
-            'timestamp': datetime.utcnow(),
-            'status': 'published',
-            'voteCount': 0,
-            'reportedCount': 0,
-            'subject': subject
+            'submitterEmail': from_email, 'text': text_body or html_body,
+            'imageUrl': image_url, 'latitude': latitude, 'longitude': longitude,
+            'timestamp': datetime.utcnow(), 'status': 'published',
+            'voteCount': 0, 'reportedCount': 0, 'subject': subject
         }
-
         content_id = save_content_to_firestore(content_data)
 
         if content_id:
-            print(f"Content saved successfully with ID: {content_id}")
-
-            # Create a record for sending a notification
-            if from_email:  # Check if we have the sender's address
+            app.logger.info(f"Content saved successfully with ID: {content_id} from email by {from_email}")
+            if from_email:
                 notification_id = create_email_notification_record(db, content_id, from_email)
                 if notification_id:
-                    ok = send_pending_notification(db, notification_id)   # app_context is not needed
-                    if ok:
-                        print(f'Notification {notification_id} sent')
+                    # Consider making email sending asynchronous for production
+                    email_sent_ok = send_pending_notification(db, notification_id, app_context=app.app_context())
+                    if email_sent_ok:
+                        app.logger.info(
+                            f'Notification email process initiated for {notification_id} (content: {content_id}).')
+                    else:
+                        app.logger.warning(
+                            f'Notification email process failed for {notification_id} (content: {content_id}).')
                 else:
-                    print(f"Failed to create notification record for content {content_id}")
-
-            return jsonify({
-                'status': 'success',
-                'contentId': content_id,
-                'message': 'Content published successfully'
-            })
+                    app.logger.warning(f"Failed to create notification record for content {content_id}")
+            return jsonify({'status': 'success', 'contentId': content_id, 'message': 'Content published successfully'})
         else:
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to save content'
-            }), 500
-
+            app.logger.error(f"Failed to save content from email by {from_email}, subject: '{subject}'.")
+            return jsonify({'status': 'error', 'message': 'Failed to save content'}), 500
     except Exception as e:
-        print(f"Error processing webhook: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'status': 'error',
-            'message': f'Internal server error: {str(e)}'
-        }), 500
+        app.logger.error(f"Critical error processing Postmark webhook: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': f'Internal server error: {str(e)}'}), 500
 
 
 # --- ADMIN PANEL ---
-
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-
         try:
-            # Check administrator credentials
             admin_ref = db.collection('admins').where('email', '==', email).limit(1).get()
-
             if not admin_ref:
                 return render_template('admin/login.html', error='Invalid email or password')
-
             admin_doc = admin_ref[0]
             admin_data = admin_doc.to_dict()
-
-            # Password check (in a real project, use hashing)
+            # IMPORTANT: Use hashed passwords in a real application!
             if admin_data.get('password') != password:
                 return render_template('admin/login.html', error='Invalid email or password')
-
-            # Create session for administrator
             session['admin_id'] = admin_doc.id
             session['admin_email'] = admin_data.get('email')
-
+            app.logger.info(f"Admin '{email}' logged in successfully.")
             return redirect(url_for('admin_dashboard'))
-
         except Exception as e:
-            print(f"Error during administrator login: {e}")
+            app.logger.error(f"Error during admin login for email {email}: {e}", exc_info=True)
             return render_template('admin/login.html', error='An error occurred during login')
-
-    # If user is already logged in as admin, redirect to dashboard
     if 'admin_id' in session:
         return redirect(url_for('admin_dashboard'))
-
     return render_template('admin/login.html')
+
 
 @app.route('/admin/logout')
 def admin_logout():
+    admin_email = session.get('admin_email', 'Unknown admin')
     session.pop('admin_id', None)
     session.pop('admin_email', None)
+    app.logger.info(f"Admin '{admin_email}' logged out.")
     return redirect(url_for('admin_login'))
+
 
 @app.route('/admin/dashboard')
 def admin_dashboard():
-    # Administrator access check
     if 'admin_id' not in session:
         return redirect(url_for('admin_login'))
-
     status_filter = request.args.get('status', 'for_moderation')
-
     try:
         items_query = db.collection('contentItems')
-
-        # Apply status filter if it's not 'all'
         if status_filter != 'all':
             items_query = items_query.where('status', '==', status_filter)
-
-        # Sort by creation time (newest first)
         items_query = items_query.order_by('timestamp', direction=firestore.Query.DESCENDING)
-
-        # Get documents
         items_docs = items_query.get()
-
         items = []
         for doc in items_docs:
             item_data = doc.to_dict()
             item_data['itemId'] = doc.id
-
-            # Get all reports for this item
-            if status_filter == 'for_moderation' or status_filter == 'all':
-                reports_ref = db.collection('reports').where('contentId', '==', doc.id).get()
+            if status_filter == 'for_moderation' or status_filter == 'all':  # Simplified condition
+                reports_ref = db.collection('reports').where('contentId', '==',
+                                                             doc.id).get()  # Assuming 'reports' collection
                 item_data['reports'] = [report.to_dict() for report in reports_ref]
-
-            # Add display name for status
-            status_map = {
-                'published': 'Published',
-                'for_moderation': 'For Moderation',
-                'rejected': 'Rejected'
-            }
+            status_map = {'published': 'Published', 'for_moderation': 'For Moderation', 'rejected': 'Rejected'}
             item_data['status_display'] = status_map.get(item_data.get('status'), item_data.get('status'))
-
             items.append(item_data)
-
-        # Section title depending on the filter
         section_titles = {
-            'all': 'All Posts',
-            'for_moderation': 'Posts for Moderation',
-            'published': 'Published Posts',
-            'rejected': 'Rejected Posts'
+            'all': 'All Posts', 'for_moderation': 'Posts for Moderation',
+            'published': 'Published Posts', 'rejected': 'Rejected Posts'
         }
-
-        return render_template('admin/dashboard.html', 
-                              items=items, 
-                              status=status_filter,
-                              section_title=section_titles.get(status_filter, 'Posts'),
-                              admin_email=session.get('admin_email'))
-
+        return render_template('admin/dashboard.html',
+                               items=items, status=status_filter,
+                               section_title=section_titles.get(status_filter, 'Posts'),
+                               admin_email=session.get('admin_email'))
     except Exception as e:
-        print(f"Error loading admin dashboard: {e}")
-        import traceback
-        traceback.print_exc()
-        return render_template('500.html'), 500
+        app.logger.error(f"Error loading admin dashboard (status: {status_filter}): {e}", exc_info=True)
+        return render_template('500.html'), 500  # Assuming you have a 500.html template
+
 
 @app.route('/admin/api/content/<content_id>/approve', methods=['POST'])
 def admin_approve_content(content_id):
-    # Administrator access check
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-
     try:
-        # Update post status to 'published'
         content_ref = db.collection('contentItems').document(content_id)
         content_ref.update({
             'status': 'published',
             'moderated_by': session.get('admin_id'),
             'moderated_at': firestore.SERVER_TIMESTAMP
         })
-
+        app.logger.info(f"Admin '{session.get('admin_email')}' approved content ID: {content_id}")
         return jsonify({'status': 'success', 'message': 'Post approved'})
-
     except Exception as e:
-        print(f"Error approving post: {e}")
+        app.logger.error(f"Error approving post {content_id} by admin '{session.get('admin_email')}': {e}",
+                         exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/admin/api/content/<content_id>/reject', methods=['POST'])
 def admin_reject_content(content_id):
-    # Administrator access check
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-
     try:
-        # Update post status to 'rejected'
         content_ref = db.collection('contentItems').document(content_id)
         content_ref.update({
             'status': 'rejected',
             'moderated_by': session.get('admin_id'),
             'moderated_at': firestore.SERVER_TIMESTAMP
         })
-
+        app.logger.info(f"Admin '{session.get('admin_email')}' rejected content ID: {content_id}")
         return jsonify({'status': 'success', 'message': 'Post rejected'})
-
     except Exception as e:
-        print(f"Error rejecting post: {e}")
+        app.logger.error(f"Error rejecting post {content_id} by admin '{session.get('admin_email')}': {e}",
+                         exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# Filter for formatting timestamps in templates
-@app.template_filter('datetime')
-def format_datetime(timestamp):
-    if not timestamp:
-        return ''
 
-    # Handle different Firestore timestamp types
+@app.template_filter('datetime')
+def format_datetime_filter(timestamp):  # Renamed to avoid conflict with datetime module
+    if not timestamp: return ''
     if isinstance(timestamp, dict):
         if '_seconds' in timestamp:
             timestamp = datetime.fromtimestamp(timestamp['_seconds'])
         elif 'seconds' in timestamp:
             timestamp = datetime.fromtimestamp(timestamp['seconds'])
-
-    if isinstance(timestamp, datetime):
-        return timestamp.strftime('%d.%m.%Y %H:%M')
-
+    if isinstance(timestamp, datetime): return timestamp.strftime('%d.%m.%Y %H:%M')
     return str(timestamp)
 
-# --- CHANGES START HERE --- (This comment seems to be a leftover, removing)
 
 @app.route('/')
 def home():
-    """
-    Route for the main page, displaying a map with real data from Firestore.
-    """
     items_for_map = []
     try:
-        # Request all published items from the 'contentItems' collection
-        # Sort by time descending to show newest first (optional)
         items_query = db.collection('contentItems') \
             .where('status', '==', 'published') \
             .order_by('voteCount', direction=firestore.Query.ASCENDING) \
             .order_by('timestamp', direction=firestore.Query.DESCENDING) \
             .stream()
-
         for item_doc in items_query:
             item_data = item_doc.to_dict()
-            item_data['itemId'] = item_doc.id  # Add document ID, might be useful
-
-            # Ensure latitude and longitude exist
+            item_data['itemId'] = item_doc.id
             if 'latitude' in item_data and 'longitude' in item_data:
-                # Optionally: Convert timestamp to string if needed for display in InfoWindow
-                # if isinstance(item_data.get('timestamp'), datetime):
-                #    item_data['timestamp'] = item_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
                 items_for_map.append(item_data)
             else:
-                print(f"DEBUG: Item {item_doc.id} skipped, missing coordinates.")
-
-        print(f"DEBUG: Loaded {len(items_for_map)} items from Firestore for the map.")
-
+                app.logger.debug(f"Item {item_doc.id} skipped for map, missing coordinates.")
+        app.logger.debug(f"Loaded {len(items_for_map)} items from Firestore for the map.")
     except Exception as e:
-        print(f"Error loading data from Firestore for the map: {e}")
-        # Can pass an empty list or an error message to the template
-        # items_for_map = []
-        # flash('Failed to load data for the map.', 'error') # if using flash messages
-
+        app.logger.error(f"Error loading data from Firestore for the map: {e}", exc_info=True)
     return render_template('index.html', items=items_for_map, maps_api_key=GOOGLE_MAPS_API_KEY)
 
 
 # --- API for interacting with posts ---
-
 @app.route('/api/content/<content_id>/vote', methods=['POST'])
 def vote_content(content_id):
-    """API for voting on content (like/dislike)"""
-    app.logger.info(f"=== VOTE DEBUG INFO ===")
-    app.logger.info(f"Received vote request for content_id: {content_id}")
-    app.logger.info(f"Headers: {dict(request.headers)}")
-    app.logger.info(f"Content-Type: {request.content_type}")
-    app.logger.info(f"Content-Length: {request.content_length}")
-
+    app.logger.info(f"Vote request for content_id: {content_id}")
     try:
-        # Get data from request
         data = request.get_json()
-        print(f"Received data: {data}")
-
         if not data or 'vote' not in data:
-            print(f"Error: missing vote parameter in data")
+            app.logger.warning(f"Missing 'vote' parameter for content_id: {content_id}. Data: {data}")
             return jsonify({'status': 'error', 'message': 'Missing vote parameter'}), 400
-
-        vote_value = data.get('vote')  # 1 for like, -1 for dislike
-        user_id = data.get('userId') or request.headers.get('X-User-ID')
-        print(f"Vote value: {vote_value}, user_id: {user_id}")
-
+        vote_value = data.get('vote')
+        user_id = data.get('userId') or request.headers.get('X-User-ID')  # Consider a more robust user ID system
         if not user_id:
-            print(f"Error: missing user_id")
+            app.logger.warning(f"Missing 'userId' for voting on content_id: {content_id}.")
             return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
-
         if vote_value not in [1, -1]:
-            print(f"Error: invalid vote value: {vote_value}")
+            app.logger.warning(f"Invalid 'vote' value: {vote_value} for content_id: {content_id}.")
             return jsonify({'status': 'error', 'message': 'Invalid vote value'}), 400
 
-        # Get document from Firestore
         doc_ref = db.collection('contentItems').document(content_id)
-        print(f"Requesting document from Firestore: {content_id}")
         doc = doc_ref.get()
-
         if not doc.exists:
-            print(f"Error: document not found in Firestore: {content_id}")
+            app.logger.warning(f"Content not found for voting: {content_id}")
             return jsonify({'status': 'error', 'message': 'Content not found'}), 404
 
-        print(f"Document found in Firestore: {content_id}")
         doc_data = doc.to_dict()
-        print(f"Document data: {doc_data}")
-
-        # Check if post is under moderation
         if doc_data.get('status') == 'for_moderation':
-            print(f"Post {content_id} is under moderation, voting prohibited")
-            return jsonify({
-                'status': 'error',
-                'message': 'Cannot vote for content under moderation'
-            }), 403
+            app.logger.info(f"Attempt to vote on content under moderation: {content_id}")
+            return jsonify({'status': 'error', 'message': 'Cannot vote for content under moderation'}), 403
 
-        # Check if this user has already voted
         voters = doc_data.get('voters', {})
-        if user_id in voters:
-            previous_vote = voters[user_id]
-            print(f"User {user_id} already voted for post {content_id}, previous vote: {previous_vote}")
+        vote_adjustment = vote_value  # Simplified logic, assumes new vote or overwrites
+        if user_id in voters and voters[user_id] == vote_value:
+            app.logger.info(f"User {user_id} already voted this way for {content_id}.")
+            return jsonify({'status': 'error', 'message': 'You have already voted this way',
+                            'newVoteCount': doc_data.get('voteCount', 0)}), 200
 
-            # If the vote is the same, return an error
-            if previous_vote == vote_value:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'You have already voted this way',
-                    'newVoteCount': doc_data.get('voteCount', 0)
-                }), 200
-
-            vote_adjustment = vote_value
-        else:
-            # If the user is voting for the first time, just add their vote
-            vote_adjustment = vote_value
-
-        # Update vote count
-        # For simplicity, just increment/decrement; in a real application,
-        # track IPs/users to prevent manipulation
         current_votes = doc_data.get('voteCount', 0)
-        print(f"Current vote count: {current_votes}")
+        # More robust vote change logic might be needed if users can change from +1 to -1 etc.
+        # This simple adjustment assumes a new vote or a direct change.
+        if user_id in voters:  # User is changing vote
+            previous_vote_val = voters[user_id]
+            new_vote_count = current_votes - previous_vote_val + vote_value
+        else:  # New vote
+            new_vote_count = current_votes + vote_value
 
-        new_vote_count = current_votes + vote_adjustment
-        print(f"New vote count: {new_vote_count}")
-
-        try:
-            # Save user information and their vote
-            voters_update = {f'voters.{user_id}': vote_value}
-
-            # Record vote history
-            vote_history = {
-                'userId': user_id,
-                'value': vote_value,
-                'timestamp': datetime.utcnow(),
-                'isAnonymous': True
-            }
-
-            doc_ref.update({
-                'voteCount': new_vote_count,
-                **voters_update,
-                'voteHistory': firestore.ArrayUnion([vote_history])
-            })
-            print(f"Document update successful")
-        except Exception as e:
-            print(f"Error updating document: {e}")
-            return jsonify({'status': 'error', 'message': f'Error updating vote count: {str(e)}'}), 500
-
-        return jsonify({
-            'status': 'success',
-            'message': 'Vote recorded',
-            'newVoteCount': new_vote_count
-        })
-
+        voters_update = {f'voters.{user_id}': vote_value}
+        vote_history = {'userId': user_id, 'value': vote_value, 'timestamp': datetime.utcnow(), 'isAnonymous': True}
+        doc_ref.update(
+            {'voteCount': new_vote_count, **voters_update, 'voteHistory': firestore.ArrayUnion([vote_history])})
+        app.logger.info(f"Vote recorded for {content_id} by user {user_id}. New count: {new_vote_count}")
+        return jsonify({'status': 'success', 'message': 'Vote recorded', 'newVoteCount': new_vote_count})
     except Exception as e:
-        print(f"Error voting for content {content_id}: {e}")
+        app.logger.error(f"Error voting for content {content_id}: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/content/<content_id>/report', methods=['POST'])
 def report_content(content_id):
-    """API for reporting content"""
+    app.logger.info(f"Report request for content_id: {content_id}")
     try:
-        # Get data from request
         data = request.get_json()
         reason = data.get('reason', 'Not specified')
         user_id = data.get('userId') or request.headers.get('X-User-ID')
-
         if not user_id:
+            app.logger.warning(f"Missing 'userId' for reporting content_id: {content_id}.")
             return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
 
-        # Get document from Firestore
         doc_ref = db.collection('contentItems').document(content_id)
         doc = doc_ref.get()
-
         if not doc.exists:
+            app.logger.warning(f"Content not found for reporting: {content_id}")
             return jsonify({'status': 'error', 'message': 'Content not found'}), 404
 
-        # Check if post is already under moderation
         doc_data = doc.to_dict()
         if doc_data.get('status') == 'for_moderation':
-            return jsonify({
-                'status': 'error',
-                'message': 'This content is already under moderation'
-            }), 403
+            app.logger.info(f"Attempt to report content already under moderation: {content_id}")
+            return jsonify({'status': 'error', 'message': 'This content is already under moderation'}), 403
 
-        # Check if this user has already reported
-        reports = doc_data.get('reports', [])
-        reporters = [report.get('userId') for report in reports if 'userId' in report]
-
+        reporters = doc_data.get('reporters', [])  # Assuming 'reporters' is a list of user IDs
         if user_id in reporters:
-            return jsonify({
-                'status': 'error',
-                'message': 'You have already reported this content'
-            }), 200
+            app.logger.info(f"User {user_id} already reported content {content_id}.")
+            return jsonify({'status': 'error', 'message': 'You have already reported this content'}), 200
 
-        # Increment report count
-        doc_data = doc.to_dict()
-        current_reports = doc_data.get('reportedCount', 0)
+        current_reports_count = doc_data.get('reportedCount', 0)
+        report_data = {'reason': reason, 'timestamp': datetime.utcnow(), 'userId': user_id, 'isAnonymous': True}
 
-        # Create report object with user information
-        report_data = {
-            'reason': reason,
-            'timestamp': datetime.utcnow(),
-            'userId': user_id,
-            'isAnonymous': True  # Mark as anonymous report
+        update_payload = {
+            'reportedCount': current_reports_count + 1,
+            'reports': firestore.ArrayUnion([report_data]),  # Assuming 'reports' is an array of report objects
+            'reporters': firestore.ArrayUnion([user_id])
         }
 
-        # Update document
-        doc_ref.update({
-            'reportedCount': current_reports + 1,
-            'reports': firestore.ArrayUnion([report_data]),
-            'reporters': firestore.ArrayUnion([user_id])  # Save list of users who reported
-        })
+        if update_payload['reportedCount'] >= 3 and doc_data.get('status') == 'published':
+            app.logger.info(
+                f"Content {content_id} reached {update_payload['reportedCount']} reports, changing status to for_moderation")
+            update_payload['status'] = 'for_moderation'
+            update_payload[
+                'moderation_note'] = f'Automatically sent for moderation ({update_payload["reportedCount"]} reports)'
+            update_payload['moderation_timestamp'] = datetime.utcnow()
 
-        # If report count >= 3, mark content as requiring moderation
-        if current_reports + 1 >= 3 and doc_data.get('status') == 'published':
-            print(f"Post {content_id} reached {current_reports + 1} reports, changing status to for_moderation")
-            try:
-                doc_ref.update({
-                    'status': 'for_moderation',
-                    'moderation_note': f'Automatically sent for moderation ({current_reports + 1} reports)',
-                    'moderation_timestamp': datetime.utcnow()
-                })
-                print(f"Post status {content_id} successfully changed to for_moderation")
-            except Exception as e:
-                print(f"Error changing post status {content_id}: {e}")
-
-        return jsonify({
-            'status': 'success',
-            'message': 'Report submitted'
-        })
-
+        doc_ref.update(update_payload)
+        app.logger.info(f"Report submitted for {content_id} by user {user_id}.")
+        return jsonify({'status': 'success', 'message': 'Report submitted'})
     except Exception as e:
-        print(f"Error submitting report for content {content_id}: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-        @app.route('/api/content/create', methods=['POST'])
-        def create_content():
-            try:
-                # Get parameters from request
-                text = request.form.get('text', '')
-                latitude = float(request.form.get('latitude'))
-                longitude = float(request.form.get('longitude'))
-                user_id = request.form.get('userId') or request.headers.get('X-User-ID')
-
-                if not user_id:
-                    return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
-
-                if not latitude or not longitude:
-                    return jsonify({'status': 'error', 'message': 'Location coordinates are required'}), 400
-
-                # Check if image is in request
-                image_url = None
-                if 'image' in request.files:
-                    image = request.files['image']
-                    if image.filename != '':
-                        # Generate unique filename
-                        filename = secure_filename(image.filename)
-                        file_extension = os.path.splitext(filename)[1]
-                        unique_filename = f"{str(uuid.uuid4())}{file_extension}"
-
-                        # Create temporary file for upload
-                        with tempfile.NamedTemporaryFile(delete=False) as temp:
-                            image.save(temp.name)
-
-                            # Upload file to Firebase Storage
-                            bucket = storage.bucket()
-                            blob = bucket.blob(f"content_images/{unique_filename}")
-                            blob.upload_from_filename(temp.name)
-
-                            # Make file public
-                            blob.make_public()
-
-                            # Get image URL
-                            image_url = blob.public_url
-
-                        # Delete temporary file
-                        os.unlink(temp.name)
-
-                # Create new record in Firestore
-                new_content = {
-                    'text': text,
-                    'imageUrl': image_url,
-                    'latitude': latitude,
-                    'longitude': longitude,
-                    'timestamp': datetime.utcnow(),
-                    'userId': user_id,
-                    'isAnonymous': True,
-                    'voteCount': 0,
-                    'reportedCount': 0,
-                    'status': 'published'  # Initial status - published
-                }
-
-                # Add document to collection
-                doc_ref = db.collection('contentItems').document()
-                doc_ref.set(new_content)
-
-                # Update document id
-                doc_ref.update({
-                    'itemId': doc_ref.id
-                })
-
-                return jsonify(dict(status='success', message='Content created successfully', contentId=doc_ref.id))
-            except Exception as e:
-                print(f"Error creating content: {e}")
-
+        app.logger.error(f"Error submitting report for content {content_id}: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-# --- END API for interacting with posts ---
+@app.route('/api/content/create', methods=['POST'])
+def create_content():
+    app.logger.info("Received request to /api/content/create")
+    try:
+        text = request.form.get('text', '')
+        try:
+            latitude = float(request.form.get('latitude'))
+            longitude = float(request.form.get('longitude'))
+        except (TypeError, ValueError):
+            app.logger.warning("Invalid or missing coordinates for content creation.")
+            return jsonify(
+                {'status': 'error', 'message': 'Latitude and longitude are required and must be numbers.'}), 400
+
+        user_id = request.form.get('userId') or request.headers.get('X-User-ID')
+        if not user_id:
+            app.logger.warning("User ID missing for content creation.")
+            return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
+
+        image_url = None
+        if 'image' in request.files:
+            image = request.files['image']
+            if image and image.filename != '':
+                filename = secure_filename(image.filename)
+                file_extension = os.path.splitext(filename)[1].lower()
+                if file_extension.lstrip('.') not in ALLOWED_IMAGE_EXTENSIONS:
+                    app.logger.warning(f"Unsupported image type uploaded: {filename}")
+                    return jsonify({'status': 'error', 'message': 'Unsupported image type.'}), 400
+
+                image_data = image.read()  # Read image data
+                if len(image_data) > MAX_IMAGE_SIZE:  # Check size before temp file
+                    app.logger.warning(f"Uploaded image {filename} too large: {len(image_data)} bytes.")
+                    return jsonify({'status': 'error',
+                                    'message': f'Image size exceeds limit of {MAX_IMAGE_SIZE // (1024 * 1024)}MB.'}), 400
+
+                # Re-assign unique_filename to avoid using original potentially unsafe filename in GCS path
+                unique_gcs_filename = f"content_images/{str(uuid.uuid4())}{file_extension}"
+
+                # Uploading image_data (bytes) directly
+                blob = bucket.blob(unique_gcs_filename)
+                blob.upload_from_string(image_data, content_type=image.content_type)
+                blob.make_public()
+                image_url = blob.public_url
+            else:
+                app.logger.info("Image file provided but filename is empty or file is not valid.")
+
+        new_content = {
+            'text': text, 'imageUrl': image_url, 'latitude': latitude, 'longitude': longitude,
+            'timestamp': datetime.utcnow(), 'userId': user_id, 'isAnonymous': True,
+            # Consider if API posts should be anonymous
+            'voteCount': 0, 'reportedCount': 0, 'status': 'published'
+        }
+        doc_ref = db.collection('contentItems').document()
+        doc_ref.set(new_content)
+        doc_ref.update({'itemId': doc_ref.id})  # Add itemId to the document
+        app.logger.info(f"Content created successfully via API by user {user_id}. Content ID: {doc_ref.id}")
+        return jsonify(dict(status='success', message='Content created successfully', contentId=doc_ref.id))
+    except Exception as e:
+        app.logger.error(f"Error creating content via API: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/post/<item_id>')
 def post_view(item_id):
-    """
-    Route for viewing a specific post.
-    The map is centered on the corresponding marker, and the marker is automatically opened.
-    """
-    # Get all published items for the map
     items_for_map = []
     try:
-        # Request all published items (same query as in home())
         items_query = db.collection('contentItems') \
             .where('status', '==', 'published') \
             .order_by('voteCount', direction=firestore.Query.ASCENDING) \
             .order_by('timestamp', direction=firestore.Query.DESCENDING) \
             .stream()
-
         for item_doc in items_query:
             item_data = item_doc.to_dict()
             item_data['itemId'] = item_doc.id
             if 'latitude' in item_data and 'longitude' in item_data:
                 items_for_map.append(item_data)
     except Exception as e:
-        print(f"Error loading data from Firestore for the map: {e}")
+        app.logger.error(f"Error loading map items for post_view: {e}", exc_info=True)
 
-    # Get target post data for SEO and metadata
     target_item_data = None
     try:
         doc_ref = db.collection('contentItems').document(item_id)
         doc = doc_ref.get()
         if doc.exists:
             target_item_data = doc.to_dict()
-            # Don't forget to add the ID, as it's not part of the document data
             target_item_data['itemId'] = item_id
+        else:
+            app.logger.warning(f"Target item {item_id} not found for post_view.")
+            # Optionally, return a 404 page here:
+            # return render_template('404.html'), 404
     except Exception as e:
-        print(f"Error retrieving post data {item_id}: {e}")
+        app.logger.error(f"Error retrieving target item {item_id} for post_view: {e}", exc_info=True)
 
-    # Pass all items for the map, target item ID, and target item data for SEO to the template
     return render_template(
         'index.html',
         items=items_for_map,
@@ -910,6 +629,6 @@ def post_view(item_id):
 
 
 if __name__ == '__main__':
-    # Show server URLs before starting
-    show_server_urls()
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":  # To prevent show_server_urls from running twice with reloader
+        show_server_urls()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
