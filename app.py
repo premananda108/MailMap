@@ -202,15 +202,15 @@ def postmark_webhook():
         data = request.get_json(force=True)  # Consider removing force=True and checking Content-Type
         if not data:
             app.logger.warning(f"No JSON data received in Postmark webhook from {request.remote_addr}.")
-            return jsonify({'status': 'error', 'message': 'No JSON data received'}), 400
+            return jsonify({'status': 'error', 'message': 'No JSON data received'}), 200
     except Exception as e:
         app.logger.error(f"Error parsing JSON data in Postmark webhook: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': f'Error parsing request data: {str(e)}'}), 400
+        return jsonify({'status': 'error', 'message': f'Error parsing request data: {str(e)}'}), 200
 
     if not verify_inbound_token(token_from_query):
         app.logger.warning(
             f"Invalid token in Postmark webhook URL from {request.remote_addr}. Token: {token_from_query}")
-        return jsonify({'status': 'error', 'message': 'Invalid token'}), 401
+        return jsonify({'status': 'error', 'message': 'Invalid token'}), 200
 
     try:
         from_email = data.get('FromFull', {}).get('Email', '') if data.get('FromFull') else data.get('From', '')
@@ -227,7 +227,7 @@ def postmark_webhook():
         if not image_url:
             app.logger.warning(
                 f"No suitable images found in attachments from email by {from_email}, subject: '{subject}'.")
-            return jsonify({'status': 'error', 'message': 'No valid images found in attachments'}), 400
+            return jsonify({'status': 'error', 'message': 'No valid images found in attachments'}), 200
 
         latitude, longitude = exif_lat, exif_lng
         if latitude is None or longitude is None:

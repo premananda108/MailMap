@@ -35,101 +35,41 @@ The application requires the following environment variables:
 
 The diagram below illustrates the main components and data flow of the application:
 
-```mermaid
----
-title: Simplified Application Architecture
----
-graph TD
-    Client[("🌐 Client/Browser")]
-    WebApp[("🖥️ Flask Web Application")]
-    Firebase[("🔥 Firebase Services (Database & Storage)")]
-    ExternalServices[("🔗 External Services (Postmark Email Service, Maps, etc.)")]
-
-    Client --> WebApp
-    WebApp --> Firebase
-    WebApp --> ExternalServices
-
-    %% Styling (reusing some of the original theme)
-    classDef client fill:#2C3E50,stroke:#ECF0F1,stroke-width:2px,color:#ECF0F1;
-    classDef webapp fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF;
-    classDef firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF;
-    classDef external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF;
-
-    class Client client;
-    class WebApp webapp;
-    class Firebase firebase;
-    class ExternalServices external;
-```
 
 ```mermaid
 ---
 title: Application Architecture
 ---
-graph TD
-    %% Main components
-    A[("🌐 Client/Browser")] --> B[("🖥️ Flask Web Application")]
-    P[("📧 Postmark Email Service")] --> B
-
-    subgraph flask["Flask Application"]
-        direction TB
-        B --> C["🔐 Authentication & Admin"]
-        B --> D["📄 Content Management"]
-        B --> E["👥 User Interactions"]
+graph LR
+    A["User Sends Email <br/> (with photo & GPS)"] --> B(("Postmark <br/> Inbound Email Service"));
+    B -- JSON Webhook (POST) --> C{"Flask Web Application <br/> (GCP Server: Nginx, Gunicorn)"};
+    
+    subgraph "Flask Backend Logic (app.py)"
+        C --> C1{"1. Validate Token"};
+        C1 --> C2{"2. Parse JSON <br/> (subject, body, attachments)"};
+        C2 --> C3{"3. Process Image <br/> - Extract GPS from EXIF <br/> - (or parse GPS from subject)"};
+        C3 -- "Image (bytes)" --> D[("Firebase Cloud Storage <br/> Image Hosting")];
+        C3 -- "Metadata" --> E[("Firebase Firestore <br/> Post Database")];
+        E --> F{"4. Create Email<br/>Notification Record"};
+        F -- "Email Data" --> G(("Email Utils<br/>SMTP Sending via Postmark"));
     end
 
-    subgraph firebase["Firebase Services"]
-        direction TB
-        F[("🗄️ Firestore Database")]
-        G["☁️ Cloud Storage"]
+    subgraph "Frontend (User's Browser)"
+        H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"} -- "Loads Post Data" --> E;
+        H -- "Image URL" --> D;
+        H -- "Renders Map" --> I((Google Maps API));
+        H -- "API Calls (likes, reports)" --> C;
     end
 
-    subgraph core["Core Features"]
-        direction TB
-        C --> |Admin Login/Logout| F
-        C --> |Content Moderation| F
-        D --> |Store Content| F
-        D --> |Store Images| G
-        D --> |Query Content| F
-        E --> |Votes| F
-        E --> |Reports| F
-    end
-
-    subgraph external["External Services"]
-        direction TB
-        H["🗺️ Google Maps API"]
-        I["📨 Email Notifications"]
-    end
-
-    B --> H
-    B --> I
-
-    subgraph data["Data Collections"]
-        direction TB
-        F --> J["📑 contentItems"]
-        F --> K["👤 admins"]
-        F --> L["📊 reports"]
-    end
-
-    %% Styles
-    classDef default fill:#2C3E50,stroke:#ECF0F1,stroke-width:2px,color:#ECF0F1;
-    classDef flask fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF;
-    classDef firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF;
-    classDef external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF;
-    classDef core fill:#8E44AD,stroke:#9B59B6,stroke-width:3px,color:#FFFFFF;
-    classDef data fill:#C0392B,stroke:#E74C3C,stroke-width:3px,color:#FFFFFF;
-
-    class A,P default;
-    class B,C,D,E flask;
-    class F,G firebase;
-    class H,I external;
-    class J,K,L data;
-
-    %% Subgraph styles
-    style flask fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF
-    style firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF
-    style core fill:#8E44AD,stroke:#9B59B6,stroke-width:3px,color:#FFFFFF
-    style external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF
-    style data fill:#C0392B,stroke:#E74C3C,stroke-width:3px,color:#FFFFFF
+    style A fill:#f9f,stroke:#333,stroke-width:2px,color:#000
+    style B fill:#ccf,stroke:#333,stroke-width:2px,color:#000
+    style C fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style D fill:#FFD700,stroke:#333,stroke-width:2px,color:#000
+    style E fill:#FFB6C1,stroke:#333,stroke-width:2px,color:#000
+    style F fill:#lightgrey,stroke:#333,stroke-width:2px,color:#000
+    style G fill:#ccf,stroke:#333,stroke-width:2px,color:#000
+    style H fill:#ADD8E6,stroke:#333,stroke-width:2px,color:#000
+    style I fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
 ```    
 
 ## Local Development
