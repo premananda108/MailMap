@@ -37,6 +37,32 @@ The diagram below illustrates the main components and data flow of the applicati
 
 ```mermaid
 ---
+title: Simplified Application Architecture
+---
+graph TD
+    Client[("🌐 Client/Browser")]
+    WebApp[("🖥️ Flask Web Application")]
+    Firebase[("🔥 Firebase Services (Database & Storage)")]
+    ExternalServices[("🔗 External Services (Postmark Email Service, Maps, etc.)")]
+
+    Client --> WebApp
+    WebApp --> Firebase
+    WebApp --> ExternalServices
+
+    %% Styling (reusing some of the original theme)
+    classDef client fill:#2C3E50,stroke:#ECF0F1,stroke-width:2px,color:#ECF0F1;
+    classDef webapp fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF;
+    classDef firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF;
+    classDef external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF;
+
+    class Client client;
+    class WebApp webapp;
+    class Firebase firebase;
+    class ExternalServices external;
+```
+
+```mermaid
+---
 title: Application Architecture
 ---
 graph TD
