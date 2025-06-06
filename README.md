@@ -39,62 +39,76 @@ The diagram below illustrates the main components and data flow of the applicati
 ---
 title: Application Architecture
 ---
-
 graph TD
-A[Client/Browser] --> B[Flask Web Application]
-P[Postmark Email Service] --> B
+    %% Main components
+    A[("🌐 Client/Browser")] --> B[("🖥️ Flask Web Application")]
+    P[("📧 Postmark Email Service")] --> B
 
-subgraph flask[Flask Application]
-    direction TB
-    B --> C[Authentication & Admin]
-    B --> D[Content Management]
-    B --> E[User Interactions]
-end
+    subgraph flask["Flask Application"]
+        direction TB
+        B --> C["🔐 Authentication & Admin"]
+        B --> D["📄 Content Management"]
+        B --> E["👥 User Interactions"]
+    end
 
-subgraph firebase[Firebase Services]
-    direction TB
-    F[(Firestore Database)]
-    G[Cloud Storage]
-end
+    subgraph firebase["Firebase Services"]
+        direction TB
+        F[("🗄️ Firestore Database")]
+        G["☁️ Cloud Storage"]
+    end
 
-subgraph core[Core Features]
-    direction TB
-    C --> |Admin Login/Logout| F
-    C --> |Content Moderation| F
-    D --> |Store Content| F
-    D --> |Store Images| G
-    D --> |Query Content| F
-    E --> |Votes| F
-    E --> |Reports| F
-end
+    subgraph core["Core Features"]
+        direction TB
+        C --> |Admin Login/Logout| F
+        C --> |Content Moderation| F
+        D --> |Store Content| F
+        D --> |Store Images| G
+        D --> |Query Content| F
+        E --> |Votes| F
+        E --> |Reports| F
+    end
 
-subgraph external[External Services]
-    direction TB
-    H[Google Maps API]
-    I[Email Notifications]
-end
+    subgraph external["External Services"]
+        direction TB
+        H["🗺️ Google Maps API"]
+        I["📨 Email Notifications"]
+    end
 
-B --> H
-B --> I
+    B --> H
+    B --> I
 
-subgraph data[Data Collections]
-    direction TB
-    F --> J[contentItems]
-    F --> K[admins]
-    F --> L[reports]
-end
+    subgraph data["Data Collections"]
+        direction TB
+        F --> J["📑 contentItems"]
+        F --> K["👤 admins"]
+        F --> L["📊 reports"]
+    end
 
-%% Styles
-style flask fill:#e1f7e1,stroke:#32a852,stroke-width:2px
-style firebase fill:#fff3e0,stroke:#ff9800,stroke-width:2px
-style external fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
-style core fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
-style data fill:#fce4ec,stroke:#e91e63,stroke-width:2px
+    %% Styles
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef flask fill:#e1f7e1,stroke:#32a852,stroke-width:3px;
+    classDef firebase fill:#fff3e0,stroke:#ff9800,stroke-width:3px;
+    classDef external fill:#e3f2fd,stroke:#2196f3,stroke-width:3px;
+    classDef core fill:#f3e5f5,stroke:#9c27b0,stroke-width:3px;
+    classDef data fill:#fce4ec,stroke:#e91e63,stroke-width:3px;
 
-%% Node styles
-style A fill:#fff,stroke:#384752,stroke-width:2px
-style B fill:#e1f7e1,stroke:#32a852,stroke-width:2px
-style P fill:#fff,stroke:#384752,stroke-width:2px
+    class A,P default;
+    class B,C,D,E flask;
+    class F,G firebase;
+    class H,I external;
+    class J,K,L data;
+
+    %% Subgraph titles
+    subgraph flask["🌿 Flask Application"]
+    end
+    subgraph firebase["🔥 Firebase Services"]
+    end
+    subgraph core["⚙️ Core Features"]
+    end
+    subgraph external["🌍 External Services"]
+    end
+    subgraph data["📚 Data Collections"]
+    end
 ```    
 
 ## Local Development
