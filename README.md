@@ -55,8 +55,8 @@ graph LR
     end
 
     subgraph "Frontend (User's Browser)"
-        H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"} -- "Reads Post Data from" --> E;
-        H -- "Displays Images from" --> D;
+        E -- "Provides Post Data to" --> H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"};
+        D -- "Provides Images to" --> H;
         H -- "Renders Map using" --> I((Google Maps API));
         H -- "API Calls (likes, reports) to" --> C;
     end
@@ -64,9 +64,12 @@ graph LR
     style A fill:#f9f,stroke:#333,stroke-width:2px,color:#000
     style B fill:#ccf,stroke:#333,stroke-width:2px,color:#000
     style C fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style C1 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style C2 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    style C3 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
     style D fill:#FFD700,stroke:#333,stroke-width:2px,color:#000
     style E fill:#FFB6C1,stroke:#333,stroke-width:2px,color:#000
-    style F fill:#lightgrey,stroke:#333,stroke-width:2px,color:#000
+    style F fill:#ccf,stroke:#333,stroke-width:2px,color:#000
     style G fill:#ccf,stroke:#333,stroke-width:2px,color:#000
     style H fill:#ADD8E6,stroke:#333,stroke-width:2px,color:#000
     style I fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
