@@ -85,12 +85,12 @@ graph TD
     end
 
     %% Styles
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
-    classDef flask fill:#e1f7e1,stroke:#32a852,stroke-width:3px;
-    classDef firebase fill:#fff3e0,stroke:#ff9800,stroke-width:3px;
-    classDef external fill:#e3f2fd,stroke:#2196f3,stroke-width:3px;
-    classDef core fill:#f3e5f5,stroke:#9c27b0,stroke-width:3px;
-    classDef data fill:#fce4ec,stroke:#e91e63,stroke-width:3px;
+    classDef default fill:#2C3E50,stroke:#ECF0F1,stroke-width:2px,color:#ECF0F1;
+    classDef flask fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF;
+    classDef firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF;
+    classDef external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF;
+    classDef core fill:#8E44AD,stroke:#9B59B6,stroke-width:3px,color:#FFFFFF;
+    classDef data fill:#C0392B,stroke:#E74C3C,stroke-width:3px,color:#FFFFFF;
 
     class A,P default;
     class B,C,D,E flask;
@@ -109,6 +109,10 @@ graph TD
     end
     subgraph data["📚 Data Collections"]
     end
+
+    %% Global styles
+    classDef subgraph-title fill:none,stroke:none,color:#FFFFFF,font-weight:bold;
+    class flask,firebase,core,external,data subgraph-title;
 ```    
 
 ## Local Development
