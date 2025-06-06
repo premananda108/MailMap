@@ -33,6 +33,13 @@ The application requires the following environment variables:
 
 ## Architecture
 
+The diagram below illustrates the main components and data flow of the application:
+
+```mermaid
+---
+title: Application Architecture
+---
+
 graph TD
 A[Client/Browser] --> B[Flask Web Application]
 P[Postmark Email Service] --> B
@@ -81,6 +88,7 @@ P[Postmark Email Service] --> B
     class B,C,D,E flask
     class F,G firebase
     class H,I external
+```    
 
 ## Local Development
 
