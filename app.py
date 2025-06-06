@@ -1,7 +1,6 @@
 import os
 import base64
 import re
-import tempfile
 from datetime import datetime
 import uuid
 from dotenv import load_dotenv

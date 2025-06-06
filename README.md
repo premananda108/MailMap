@@ -31,6 +31,57 @@ The application requires the following environment variables:
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to Firebase service account key (in production)
 - `FLASK_SECRET_KEY` - Secret key for Flask sessions (required for admin panel)
 
+## Architecture
+
+graph TD
+A[Client/Browser] --> B[Flask Web Application]
+P[Postmark Email Service] --> B
+
+    subgraph Flask Application
+        B --> C[Authentication & Admin]
+        B --> D[Content Management]
+        B --> E[User Interactions]
+    end
+    
+    subgraph Firebase Services
+        F[(Firestore Database)]
+        G[Cloud Storage]
+    end
+    
+    subgraph Core Features
+        C --> |Admin Login/Logout| F
+        C --> |Content Moderation| F
+        
+        D --> |Store Content| F
+        D --> |Store Images| G
+        D --> |Query Content| F
+        
+        E --> |Votes| F
+        E --> |Reports| F
+    end
+    
+    subgraph External Services
+        H[Google Maps API]
+        I[Email Notifications]
+    end
+    
+    B --> H
+    B --> I
+    
+    subgraph Data Collections
+        F --> J[contentItems]
+        F --> K[admins]
+        F --> L[reports]
+    end
+
+    classDef flask fill:#f9f,stroke:#333,stroke-width:2px
+    classDef firebase fill:#bbf,stroke:#333,stroke-width:2px
+    classDef external fill:#bfb,stroke:#333,stroke-width:2px
+    
+    class B,C,D,E flask
+    class F,G firebase
+    class H,I external
+
 ## Local Development
 
 1. Clone the repository
