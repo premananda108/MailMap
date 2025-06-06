@@ -35,44 +35,43 @@ The application requires the following environment variables:
 
 The diagram below illustrates the main components and data flow of the application:
 
-
 ```mermaid
 ---
 title: Application Architecture
 ---
 graph LR
     A["User Sends Email <br/> (with photo & GPS)"] --> B(("Postmark <br/> Inbound Email Service"));
-    B -- "JSON Webhook (POST)" --> C{"Flask Web Application <br/> (GCP Server: Nginx, Gunicorn)"};
     
-    subgraph "Flask Backend Logic (app.py)"
-        C --> C1{"Validate Token"};
-        C1 --> C2{"Parse JSON <br/> (subject, body, attachments)"};
-        C2 --> C3{"Process Image <br/> - Extract GPS from EXIF <br/> - (or parse GPS from subject)"};
-        C3 -- "Image (bytes) to" --> D[("Firebase Cloud Storage <br/> Image Hosting")];
-        C3 -- "Metadata to" --> E[("Firebase Firestore <br/> Post Database")];
-        E --> F{"Create Email<br/>Notification Record"};
-        F -- "Email Data to" --> G(("Email Utils<br/>SMTP Sending via Postmark"));
+    subgraph "Backend Infrastructure"
+        direction LR
+        B -- "JSON Webhook (POST)" --> C{"Flask Web Application <br/> (GCP Server: Nginx, Gunicorn <br/> Handles all backend logic)"};
+        C -- "Uploads Image to" --> D[("Firebase Cloud Storage <br/> Image Hosting")];
+        C -- "Saves Post Metadata to" --> E[("Firebase Firestore <br/> Post Database")];
+        C -- "Initiates Email Notification via" --> ExtSMTP((Email Sending Service <br/> e.g., Postmark SMTP));
     end
-
+    
     subgraph "Frontend (User's Browser)"
-        E -- "Provides Post Data to" --> H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"};
+        direction LR
+        H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"}
+        
+        E -- "Provides Post Data to" --> H;
         D -- "Provides Images to" --> H;
         H -- "Renders Map using" --> I((Google Maps API));
         H -- "API Calls (likes, reports) to" --> C;
     end
 
-    style A fill:#f9f,stroke:#333,stroke-width:2px,color:#000
-    style B fill:#ccf,stroke:#333,stroke-width:2px,color:#000
-    style C fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
-    style C1 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
-    style C2 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
-    style C3 fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
-    style D fill:#FFD700,stroke:#333,stroke-width:2px,color:#000
-    style E fill:#FFB6C1,stroke:#333,stroke-width:2px,color:#000
-    style F fill:#ccf,stroke:#333,stroke-width:2px,color:#000
-    style G fill:#ccf,stroke:#333,stroke-width:2px,color:#000
-    style H fill:#ADD8E6,stroke:#333,stroke-width:2px,color:#000
-    style I fill:#90ee90,stroke:#333,stroke-width:2px,color:#000
+    classDef default fill:#2C3E50,stroke:#ECF0F1,stroke-width:2px,color:#ECF0F1;
+    classDef input fill:#8E44AD,stroke:#9B59B6,stroke-width:2px,color:#FFFFFF;
+    classDef service fill:#2980B9,stroke:#3498DB,stroke-width:2px,color:#FFFFFF;
+    classDef app fill:#27AE60,stroke:#2ECC71,stroke-width:2px,color:#FFFFFF;
+    classDef storage fill:#F39C12,stroke:#F1C40F,stroke-width:2px,color:#000000;
+    classDef frontend fill:#E74C3C,stroke:#C0392B,stroke-width:2px,color:#FFFFFF;
+
+    class A input;
+    class B,ExtSMTP service;
+    class C,I app;
+    class D,E storage;
+    class H frontend;
 ```    
 
 ## Local Development
