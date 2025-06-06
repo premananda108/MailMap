@@ -164,6 +164,10 @@ gcloud builds submit --tag gcr.io/PROJECT_ID/mailmap-app
 gcloud run deploy mailmap --image gcr.io/PROJECT_ID/mailmap-app --platform managed --region us-central1 --allow-unauthenticated
 ```
 
+## Author
+
+Premananda (info@premananda.site)
+
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
