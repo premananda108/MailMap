@@ -98,21 +98,12 @@ graph TD
     class H,I external;
     class J,K,L data;
 
-    %% Subgraph titles
-    subgraph flask["🌿 Flask Application"]
-    end
-    subgraph firebase["🔥 Firebase Services"]
-    end
-    subgraph core["⚙️ Core Features"]
-    end
-    subgraph external["🌍 External Services"]
-    end
-    subgraph data["📚 Data Collections"]
-    end
-
-    %% Global styles
-    classDef subgraph-title fill:none,stroke:none,color:#FFFFFF,font-weight:bold;
-    class flask,firebase,core,external,data subgraph-title;
+    %% Subgraph styles
+    style flask fill:#1E8449,stroke:#2ECC71,stroke-width:3px,color:#FFFFFF
+    style firebase fill:#D35400,stroke:#E67E22,stroke-width:3px,color:#FFFFFF
+    style core fill:#8E44AD,stroke:#9B59B6,stroke-width:3px,color:#FFFFFF
+    style external fill:#2980B9,stroke:#3498DB,stroke-width:3px,color:#FFFFFF
+    style data fill:#C0392B,stroke:#E74C3C,stroke-width:3px,color:#FFFFFF
 ```    
 
 ## Local Development
