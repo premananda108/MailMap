@@ -44,50 +44,57 @@ graph TD
 A[Client/Browser] --> B[Flask Web Application]
 P[Postmark Email Service] --> B
 
-    subgraph Flask Application
-        B --> C[Authentication & Admin]
-        B --> D[Content Management]
-        B --> E[User Interactions]
-    end
-    
-    subgraph Firebase Services
-        F[(Firestore Database)]
-        G[Cloud Storage]
-    end
-    
-    subgraph Core Features
-        C --> |Admin Login/Logout| F
-        C --> |Content Moderation| F
-        
-        D --> |Store Content| F
-        D --> |Store Images| G
-        D --> |Query Content| F
-        
-        E --> |Votes| F
-        E --> |Reports| F
-    end
-    
-    subgraph External Services
-        H[Google Maps API]
-        I[Email Notifications]
-    end
-    
-    B --> H
-    B --> I
-    
-    subgraph Data Collections
-        F --> J[contentItems]
-        F --> K[admins]
-        F --> L[reports]
-    end
+subgraph flask[Flask Application]
+    direction TB
+    B --> C[Authentication & Admin]
+    B --> D[Content Management]
+    B --> E[User Interactions]
+end
 
-    classDef flask fill:#f9f,stroke:#333,stroke-width:2px
-    classDef firebase fill:#bbf,stroke:#333,stroke-width:2px
-    classDef external fill:#bfb,stroke:#333,stroke-width:2px
-    
-    class B,C,D,E flask
-    class F,G firebase
-    class H,I external
+subgraph firebase[Firebase Services]
+    direction TB
+    F[(Firestore Database)]
+    G[Cloud Storage]
+end
+
+subgraph core[Core Features]
+    direction TB
+    C --> |Admin Login/Logout| F
+    C --> |Content Moderation| F
+    D --> |Store Content| F
+    D --> |Store Images| G
+    D --> |Query Content| F
+    E --> |Votes| F
+    E --> |Reports| F
+end
+
+subgraph external[External Services]
+    direction TB
+    H[Google Maps API]
+    I[Email Notifications]
+end
+
+B --> H
+B --> I
+
+subgraph data[Data Collections]
+    direction TB
+    F --> J[contentItems]
+    F --> K[admins]
+    F --> L[reports]
+end
+
+%% Styles
+style flask fill:#e1f7e1,stroke:#32a852,stroke-width:2px
+style firebase fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+style external fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
+style core fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+style data fill:#fce4ec,stroke:#e91e63,stroke-width:2px
+
+%% Node styles
+style A fill:#fff,stroke:#384752,stroke-width:2px
+style B fill:#e1f7e1,stroke:#32a852,stroke-width:2px
+style P fill:#fff,stroke:#384752,stroke-width:2px
 ```    
 
 ## Local Development
