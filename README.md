@@ -42,23 +42,23 @@ title: Application Architecture
 ---
 graph LR
     A["User Sends Email <br/> (with photo & GPS)"] --> B(("Postmark <br/> Inbound Email Service"));
-    B -- JSON Webhook (POST) --> C{"Flask Web Application <br/> (GCP Server: Nginx, Gunicorn)"};
+    B -- "JSON Webhook (POST)" --> C{"Flask Web Application <br/> (GCP Server: Nginx, Gunicorn)"};
     
     subgraph "Flask Backend Logic (app.py)"
-        C --> C1{"1. Validate Token"};
-        C1 --> C2{"2. Parse JSON <br/> (subject, body, attachments)"};
-        C2 --> C3{"3. Process Image <br/> - Extract GPS from EXIF <br/> - (or parse GPS from subject)"};
-        C3 -- "Image (bytes)" --> D[("Firebase Cloud Storage <br/> Image Hosting")];
-        C3 -- "Metadata" --> E[("Firebase Firestore <br/> Post Database")];
-        E --> F{"4. Create Email<br/>Notification Record"};
-        F -- "Email Data" --> G(("Email Utils<br/>SMTP Sending via Postmark"));
+        C --> C1{"Validate Token"};
+        C1 --> C2{"Parse JSON <br/> (subject, body, attachments)"};
+        C2 --> C3{"Process Image <br/> - Extract GPS from EXIF <br/> - (or parse GPS from subject)"};
+        C3 -- "Image (bytes) to" --> D[("Firebase Cloud Storage <br/> Image Hosting")];
+        C3 -- "Metadata to" --> E[("Firebase Firestore <br/> Post Database")];
+        E --> F{"Create Email<br/>Notification Record"};
+        F -- "Email Data to" --> G(("Email Utils<br/>SMTP Sending via Postmark"));
     end
 
     subgraph "Frontend (User's Browser)"
-        H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"} -- "Loads Post Data" --> E;
-        H -- "Image URL" --> D;
-        H -- "Renders Map" --> I((Google Maps API));
-        H -- "API Calls (likes, reports)" --> C;
+        H{"Client Web Browser<br/>(HTML, CSS, JavaScript)"} -- "Reads Post Data from" --> E;
+        H -- "Displays Images from" --> D;
+        H -- "Renders Map using" --> I((Google Maps API));
+        H -- "API Calls (likes, reports) to" --> C;
     end
 
     style A fill:#f9f,stroke:#333,stroke-width:2px,color:#000
