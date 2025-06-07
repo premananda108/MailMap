@@ -37,12 +37,23 @@ def chrome_devtools():
 
 
 @app.before_request
-def check_content_length():
+def before_request_funcs():
+    # Sanitize HTTP_HOST
+    original_host = request.environ.get('HTTP_HOST')
+    if original_host and ',' in original_host:
+        new_host = original_host.split(',', 1)[0]
+        request.environ['HTTP_HOST'] = new_host
+        current_app.logger.info(f"Sanitizing HTTP_HOST: Original '{original_host}', New: '{new_host}'")
+
+    # Check content length
     if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
         if request.content_length is None and request.headers.get('Transfer-Encoding', '').lower() != 'chunked':
             current_app.logger.warning(
                 f"Request to {request.path} from {request.remote_addr} without Content-Length or chunked encoding."
             )
+            # It's unusual to 'pass' here. Typically, you might return an error response
+            # or allow processing to continue if this is not a critical check.
+            # For now, keeping original behavior.
             pass
 
 
