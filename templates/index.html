@@ -29,6 +29,27 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/share-buttons.css">
 
+    <style>
+        .challenge-message {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            font-size: 14px;
+            z-index: 1000;
+        }
+        .challenge-message a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .challenge-message a:hover {
+            text-decoration: underline;
+        }
+    </style>
+
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -41,6 +62,11 @@
     <!-- Loading indicator -->
     <div class="loading-overlay" id="loading-overlay">
         <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Challenge message -->
+    <div class="challenge-message">
+        This service was developed for the <a href="https://dev.to/prema_ananda/mailmap-transforming-emails-into-interactive-stories-on-google-maps-1f10" target="_blank">Postmark Challenge: Inbox Innovators</a>
     </div>
 
     <!-- Firebase initialization -->
