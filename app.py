@@ -71,11 +71,18 @@ MAX_IMAGE_SIZE = app_config['MAX_IMAGE_SIZE']
 
 # Firebase Initialization
 if not firebase_admin._apps:
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred, {
-        'storageBucket': FIREBASE_STORAGE_BUCKET
-    })
+    # Проверяем, запущены ли мы в тестовой среде
+    if os.environ.get('TESTING') == 'true' or os.environ.get('TEST_ENV') == 'true':
+        # Для тестов инициализируем без credentials
+        firebase_admin.initialize_app(options={'projectId': 'test-project'})
+    else:
+        # Для production используем настоящие credentials
+        cred = credentials.ApplicationDefault()
+        firebase_admin.initialize_app(cred, {
+            'storageBucket': FIREBASE_STORAGE_BUCKET
+        })
 
+# Теперь безопасно создаем клиент Firestore и Storage
 db = firestore.client()
 bucket = storage.bucket()  # Initialize bucket here after firebase_admin.initialize_app
 

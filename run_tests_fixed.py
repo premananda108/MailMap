@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Скрипт для запуска всех тестов системы обработки вебхуков.
+Исправленный скрипт для запуска тестов с правильной настройкой Firebase.
 """
 
 import sys
 import os
 import subprocess
 import time
+
+# Устанавливаем переменные окружения для тестов
+os.environ['TESTING'] = 'true'
+os.environ['TEST_ENV'] = 'true'
 
 def run_test_module(module_name):
     """Запускает тесты для конкретного модуля"""
@@ -17,11 +21,16 @@ def run_test_module(module_name):
     start_time = time.time()
     
     try:
+        # Устанавливаем переменные окружения для каждого теста
+        env = os.environ.copy()
+        env['TESTING'] = 'true'
+        env['TEST_ENV'] = 'true'
+        
         result = subprocess.run([
             sys.executable, '-m', 'pytest', 
             f'tests/test_{module_name}.py', 
             '-v', '--tb=short'
-        ], capture_output=True, text=True, timeout=60)
+        ], capture_output=True, text=True, timeout=60, env=env)
         
         end_time = time.time()
         duration = end_time - start_time
@@ -55,11 +64,15 @@ def run_integration_tests():
     start_time = time.time()
     
     try:
+        env = os.environ.copy()
+        env['TESTING'] = 'true'
+        env['TEST_ENV'] = 'true'
+        
         result = subprocess.run([
             sys.executable, '-m', 'pytest', 
             'tests/test_integration.py', 
             '-v', '--tb=short'
-        ], capture_output=True, text=True, timeout=120)
+        ], capture_output=True, text=True, timeout=120, env=env)
         
         end_time = time.time()
         duration = end_time - start_time
@@ -93,11 +106,15 @@ def run_compatibility_tests():
     start_time = time.time()
     
     try:
+        env = os.environ.copy()
+        env['TESTING'] = 'true'
+        env['TEST_ENV'] = 'true'
+        
         result = subprocess.run([
             sys.executable, '-m', 'pytest', 
             'tests/test_compatibility.py', 
             '-v', '--tb=short'
-        ], capture_output=True, text=True, timeout=60)
+        ], capture_output=True, text=True, timeout=60, env=env)
         
         end_time = time.time()
         duration = end_time - start_time
@@ -127,6 +144,8 @@ def run_all_tests():
     print("🚀 Запуск всех тестов системы обработки вебхуков")
     print(f"Python версия: {sys.version}")
     print(f"Рабочая директория: {os.getcwd()}")
+    print(f"TESTING: {os.environ.get('TESTING', 'Not set')}")
+    print(f"TEST_ENV: {os.environ.get('TEST_ENV', 'Not set')}")
     
     # Список модулей для тестирования
     modules = [
@@ -174,62 +193,5 @@ def run_all_tests():
         print(f"\n⚠️  {failed_tests} ТЕСТОВ ПРОВАЛИЛОСЬ")
         return 1
 
-    import os
-    import sys
-    import pytest
-
-    def run_integration_tests():
-    """Запускает интеграционные тесты"""
-    print("🧪 Запуск интеграционных тестов...")
-    os.environ['TESTING'] = 'true'
-    result = pytest.main(['tests/test_integration.py', '-v'])
-    return result == 0
-
-    def run_compatibility_tests():
-    """Запускает тесты обратной совместимости"""
-    print("🧪 Запуск тестов обратной совместимости...")
-    os.environ['TESTING'] = 'true'
-    result = pytest.main(['tests/test_compatibility.py', '-v'])
-    return result == 0
-
-    def run_test_module(module_name):
-    """Запускает тесты для указанного модуля"""
-    print(f"🧪 Запуск тестов для модуля {module_name}...")
-    os.environ['TESTING'] = 'true'
-    result = pytest.main([f'tests/test_{module_name}.py', '-v'])
-    return result == 0
-
-    def run_specific_test(test_name):
-    """Запускает конкретный тест"""
-    if test_name == 'integration':
-        return run_integration_tests()
-    elif test_name == 'compatibility':
-        return run_compatibility_tests()
-    elif test_name in ['utils', 'firestore_utils', 'image_utils', 'webhook_handler']:
-        return run_test_module(test_name)
-    else:
-        print(f"❌ Неизвестный тест: {test_name}")
-        print("Доступные тесты: utils, firestore_utils, image_utils, webhook_handler, integration, compatibility")
-        return False
-
-
-    if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        test_name = sys.argv[1]
-        success = run_specific_test(test_name)
-        sys.exit(0 if success else 1)
-    else:
-        print("Укажите название теста для запуска:")
-        print("python run_tests.py [integration|compatibility|utils|firestore_utils|image_utils|webhook_handler]")
-        sys.exit(1)
-
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        # Запуск конкретного теста
-        test_name = sys.argv[1]
-        success = run_specific_test(test_name)
-        sys.exit(0 if success else 1)
-    else:
-        # Запуск всех тестов
-        exit_code = run_all_tests()
-        sys.exit(exit_code) 
+    sys.exit(run_all_tests()) 

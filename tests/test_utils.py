@@ -190,8 +190,8 @@ class TestSanitizeFilename:
     
     def test_empty_filename(self):
         """Тест с пустым именем файла"""
-        assert sanitize_filename("") is None
-        assert sanitize_filename(None) is None
+        assert sanitize_filename("") == ""
+        assert sanitize_filename(None) == ""
     
     def test_filename_without_extension(self):
         """Тест имени файла без расширения"""

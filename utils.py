@@ -61,8 +61,8 @@ def validate_email(email):
     if not email:
         return False
     
-    # Basic email pattern
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    # Более строгий паттерн, который не допускает .. и другие невалидные варианты
+    pattern = r'^(?!\.)(?!.*\.\.)[a-zA-Z0-9._%+-]+(?<!\.)@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return bool(re.match(pattern, email))
 
 
@@ -72,18 +72,22 @@ def sanitize_filename(filename):
     Returns sanitized filename.
     """
     if not filename:
-        return None
+        return "" # Возвращаем пустую строку вместо None для консистентности
     
     # Remove or replace unsafe characters
-    unsafe_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+    # Убираем двойные кавычки из списка, т.к. они не всегда являются проблемой
+    unsafe_chars = ['<', '>', ':', '/', '\\', '|', '?', '*']
     sanitized = filename
     
     for char in unsafe_chars:
         sanitized = sanitized.replace(char, '_')
+
+    # Заменяем двойные кавычки отдельно
+    sanitized = sanitized.replace('"', '_')
     
     # Limit length
     if len(sanitized) > 255:
         name, ext = sanitized.rsplit('.', 1) if '.' in sanitized else (sanitized, '')
-        sanitized = name[:255-len(ext)-1] + ('.' + ext if ext else '')
+        sanitized = name[:255 - (len(ext) + 1)] + ('.' + ext if ext else '')
     
     return sanitized 

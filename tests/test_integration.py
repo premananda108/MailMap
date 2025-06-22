@@ -1,4 +1,6 @@
 import pytest
+import os
+os.environ['TESTING'] = 'true'  # Устанавливаем переменную окружения TESTING перед импортом app
 import base64
 import io
 import json
@@ -198,6 +200,11 @@ class TestUtilityFunctions:
 class TestErrorHandling:
     """Тесты обработки ошибок"""
     
+    def setup_method(self):
+        """Настройка для каждого теста"""
+        self.app = app.test_client()
+        self.app.testing = True
+
     def test_webhook_critical_error(self):
         """Тест критической ошибки в вебхуке"""
         with patch('app.webhook_handler.handle_postmark_webhook_request') as mock_handler:
@@ -251,6 +258,11 @@ class TestErrorHandling:
 class TestResponseFormats:
     """Тесты форматов ответов"""
     
+    def setup_method(self):
+        """Настройка для каждого теста"""
+        self.app = app.test_client()
+        self.app.testing = True
+
     @patch('app.webhook_handler.handle_postmark_webhook_request')
     def test_success_response_format(self, mock_handler):
         """Тест формата успешного ответа"""
@@ -316,6 +328,18 @@ class TestResponseFormats:
 class TestPerformance:
     """Тесты производительности"""
     
+    def setup_method(self):
+        """Настройка для каждого теста"""
+        self.app = app.test_client()
+        self.app.testing = True
+
+        # Создаем тестовое изображение
+        self.img = Image.new('RGB', (10, 10), color='red')
+        self.img_bytes = io.BytesIO()
+        self.img.save(self.img_bytes, format='JPEG')
+        self.image_data = self.img_bytes.getvalue()
+        self.image_base64 = base64.b64encode(self.image_data).decode('utf-8')
+
     @patch('app.webhook_handler.handle_postmark_webhook_request')
     def test_webhook_response_time(self, mock_handler):
         """Тест времени ответа вебхука"""
@@ -379,4 +403,4 @@ class TestPerformance:
                 content_type='application/json'
             )
             
-            assert response.status_code == 200 
+            assert response.status_code == 200

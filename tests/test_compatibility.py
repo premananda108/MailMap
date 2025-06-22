@@ -1,9 +1,12 @@
 import pytest
+import os
+os.environ['TESTING'] = 'true'  # Устанавливаем переменную окружения TESTING перед импортом app
 import base64
 import io
 import json
 from unittest.mock import Mock, patch, MagicMock
 from PIL import Image
+from flask import Flask
 from app import app
 
 

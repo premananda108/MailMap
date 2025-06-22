@@ -140,6 +140,12 @@ class TestGetUser:
         assert result is None
 
 
+    import pytest
+    import os
+    os.environ['TESTING'] = 'true'  # Устанавливаем переменную окружения TESTING
+    from unittest.mock import Mock, patch
+    from firestore_utils import create_user
+
 class TestCreateUser:
     """Тесты для функции create_user"""
     
