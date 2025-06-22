@@ -1,0 +1,28 @@
+# Тестовые зависимости
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+pytest-timeout>=2.1.0
+pytest-html>=3.1.0
+
+# Моки и тестирование
+unittest-mock>=1.0.0
+responses>=0.23.0
+
+# Для тестирования изображений
+Pillow>=9.0.0
+
+# Для тестирования Firebase
+firebase-admin>=6.0.0
+
+# Для тестирования Flask
+flask-testing>=0.8.1
+
+# Для тестирования асинхронного кода
+pytest-asyncio>=0.21.0
+
+# Для тестирования производительности
+pytest-benchmark>=4.0.0
+
+# Для тестирования покрытия кода
+coverage>=7.0.0 
