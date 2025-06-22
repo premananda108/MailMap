@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - MailMap</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- ИЗМЕНЕНО: ссылка на новый файл стилей -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <!-- Если у вас есть общие стили в style.css, которые нужны и здесь, оставьте и ту ссылку -->
+    <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"> -->
+</head>
+<body>
+    <div class="auth-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+        <h1>Login</h1>
+
+        <p id="login-error-message" class="error-message" style="color: red;"></p>
+
+        <form id="login-form" class="auth-form">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <p class="auth-switch">Don't have an account? <a href="{{ url_for('register') }}">Register here</a></p>
+        <hr class="auth-divider">
+        <p class="social-signin-text">Or sign in using:</p>
+        <button type="button" id="google-signin-button" class="btn btn-google">
+            <img src="{{ url_for('static', filename='images/google-logo.svg') }}" alt="Google logo" class="google-logo"> Sign in with Google
+        </button>
+        <p class="auth-note"><small>(Google Sign-In requires client-side JavaScript integration)</small></p>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="{{ url_for('static', filename='js/firebase-init.js') }}"></script>
+
+    <!-- Google Sign-In script -->
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+</body>
+</html>

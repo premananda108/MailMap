@@ -6,6 +6,9 @@ import math
 from PIL import Image
 import exifread
 import logging
+import uuid
+import base64
+from firebase_admin import storage
 
 # Configure module logger
 # This logger will inherit the configuration from the Flask app logger if this module
@@ -236,6 +239,92 @@ def extract_gps_coordinates(image_data):
 
     logger.warning("Both exifread and Pillow methods failed to extract valid GPS coordinates.")
     return None, None
+
+
+def process_uploaded_image(image_bytes, original_filename, app_logger, bucket, allowed_extensions, max_size):
+    """
+    Process uploaded image: validate, extract GPS, upload to GCS.
+    
+    Args:
+        image_bytes: Raw image bytes
+        original_filename: Original filename
+        app_logger: Application logger instance
+        bucket: Firebase Storage bucket
+        allowed_extensions: Set of allowed file extensions
+        max_size: Maximum file size in bytes
+    
+    Returns:
+        tuple: (image_url, latitude, longitude) or (None, None, None) if processing failed
+    """
+    app_logger.debug(f"Processing uploaded image: {original_filename}")
+    
+    # Validate file extension
+    if not original_filename or '.' not in original_filename:
+        app_logger.warning(f"Invalid filename: {original_filename}")
+        return None, None, None
+    
+    file_extension = original_filename.split('.')[-1].lower()
+    if file_extension not in allowed_extensions:
+        app_logger.warning(f"Unsupported file extension: {file_extension}")
+        return None, None, None
+    
+    # Validate file size
+    if len(image_bytes) > max_size:
+        app_logger.warning(f"File too large: {len(image_bytes)} bytes (max: {max_size})")
+        return None, None, None
+    
+    try:
+        # Extract GPS coordinates
+        app_logger.debug(f"Extracting GPS coordinates from {original_filename}")
+        lat, lng = extract_gps_coordinates(image_bytes)
+        app_logger.debug(f"GPS extraction result for {original_filename}: lat={lat}, lng={lng}")
+        
+        # Upload to GCS
+        app_logger.debug(f"Uploading {original_filename} to GCS")
+        image_url = upload_image_to_gcs(image_bytes, original_filename, bucket, app_logger)
+        
+        if image_url:
+            app_logger.info(f"Successfully processed {original_filename}: URL={image_url}, GPS=({lat}, {lng})")
+            return image_url, lat, lng
+        else:
+            app_logger.error(f"Failed to upload {original_filename} to GCS")
+            return None, None, None
+            
+    except Exception as e:
+        app_logger.error(f"Error processing image {original_filename}: {e}", exc_info=True)
+        return None, None, None
+
+
+def upload_image_to_gcs(image_data, filename, bucket, app_logger):
+    """
+    Upload image to Google Cloud Storage.
+    
+    Args:
+        image_data: Raw image bytes
+        filename: Original filename
+        bucket: Firebase Storage bucket
+        app_logger: Application logger instance
+    
+    Returns:
+        str: Public URL of uploaded image or None if upload failed
+    """
+    try:
+        file_extension = filename.split('.')[-1].lower()
+        unique_filename = f"content_images/{uuid.uuid4()}.{file_extension}"
+        
+        blob = bucket.blob(unique_filename)
+        blob.upload_from_string(
+            image_data,
+            content_type=f'image/{file_extension}'
+        )
+        blob.make_public()
+        
+        app_logger.info(f"Successfully uploaded {filename} to GCS: {blob.public_url}")
+        return blob.public_url
+        
+    except Exception as e:
+        app_logger.error(f"Error uploading {filename} to GCS: {e}", exc_info=True)
+        return None
 
 
 if __name__ == '__main__':

@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Use MailMap - Share Your Stories on the Map</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card-shadow {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .email-highlight {
+            background: linear-gradient(120deg, #a8edea 0%, #fed6e3 100%);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .step-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 16px;
+            flex-shrink: 0;
+        }
+        
+        .pro-tip {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            border-left: 4px solid #e17055;
+        }
+        
+        .mailto-button {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+        
+        .mailto-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 184, 148, 0.3);
+        }
+        
+        .feature-icon {
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+        
+        @media print {
+            body { font-size: 12pt; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="gradient-bg text-white py-12">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h1 class="text-4xl font-bold mb-4">
+                <i class="fas fa-map-marked-alt mr-3"></i>
+                How to Use MailMap
+            </h1>
+            <p class="text-xl opacity-90">Transform your emails into interactive stories on Google Maps</p>
+            <div class="mt-6">
+                <a href="{{ base_url }}" target="_blank" class="inline-flex items-center bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors">
+                    <i class="fas fa-external-link-alt mr-2"></i>
+                    Visit MailMap
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-6 py-8">
+        <!-- Quick Start Section -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+                <i class="fas fa-rocket text-blue-600 mr-3"></i>
+                Quick Start Guide
+            </h2>
+            
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-6 mb-6">
+                <h3 class="text-lg font-semibold text-blue-800 mb-2">Ready to share your story? It's as easy as sending an email!</h3>
+                <p class="text-blue-700">Send your geotagged photos and stories to this special email address:</p>
+            </div>
+            
+            <div class="text-center my-8">
+                <div class="bg-gradient-to-r from-green-400 to-blue-500 p-1 rounded-lg inline-block">
+                    <div class="bg-white rounded-lg p-6">
+                        <div class="text-sm text-gray-600 mb-2">📧 MailMap Email Address:</div>
+                        <a href="mailto:{{ postmark_from_email }}?subject=My MailMap Story&body=Hi MailMap!%0A%0AHere's my story from this amazing location!%0A%0A[Attach your geotagged photo here]%0A%0ABest regards!"
+                           class="mailto-button text-white px-8 py-4 rounded-lg font-bold text-lg inline-flex items-center no-underline">
+                            <i class="fas fa-envelope mr-3"></i>
+                            {{ postmark_from_email }}
+                        </a>
+                        <div class="text-sm text-gray-500 mt-2">Click to open your email client with pre-filled template</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step-by-Step Instructions -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 flex items-center">
+                <i class="fas fa-list-ol text-green-600 mr-3"></i>
+                Step-by-Step Instructions
+            </h2>
+
+            <!-- Step 1 -->
+            <div class="flex items-start mb-8">
+                <div class="step-number text-xl">1</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-camera text-purple-600 mr-2"></i>
+                        Take a Photo with Location Data
+                    </h3>
+                    <p class="text-gray-600 mb-4">Capture your moment with GPS location enabled on your camera or smartphone. Make sure location services are turned on!</p>
+                    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4">
+                        <p class="text-yellow-700"><strong>Tip:</strong> Most smartphones automatically include GPS data in photos when location services are enabled.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="flex items-start mb-8">
+                <div class="step-number text-xl">2</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-pencil-alt text-blue-600 mr-2"></i>
+                        Write Your Story
+                    </h3>
+                    <p class="text-gray-600 mb-4">Compose an engaging description of your experience, location, or memory. The more compelling your story, the more engagement it will receive!</p>
+                    <div class="bg-gray-100 p-4 rounded-lg">
+                        <p class="text-gray-700 text-sm"><strong>Example:</strong> "Beautiful sunset at Central Park today! The golden hour light made everything magical. Perfect end to a day of exploring NYC! 🌅"</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="flex items-start mb-8">
+                <div class="step-number text-xl">3</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-paper-plane text-green-600 mr-2"></i>
+                        Send to MailMap
+                    </h3>
+                    <p class="text-gray-600 mb-4">Email your photo and story to the MailMap address. The system will automatically process your content!</p>
+                    
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-blue-800 mb-2">Option 1: Auto GPS</h4>
+                            <p class="text-blue-700 text-sm">Just attach your geotagged photo - MailMap will automatically extract the location!</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-green-800 mb-2">Option 2: Manual Coordinates</h4>
+                            <p class="text-green-700 text-sm">Add coordinates in subject line: <code class="bg-white px-2 py-1 rounded">lat:40.7128,lng:-74.0060</code></p>
+                        </div>
+                    </div>
+                    
+                    <a href="mailto:{{ postmark_from_email }}?subject=My Amazing Location Story&body=Hello MailMap!%0A%0AI want to share this incredible moment from my travels.%0A%0A[Please attach your geotagged photo]%0A%0ALocation details:%0A- What happened here:%0A- Why this place is special:%0A- Date of visit:%0A%0AEnjoy exploring!%0A%0ABest regards"
+                       class="mailto-button text-white px-6 py-3 rounded-lg font-semibold inline-flex items-center no-underline">
+                        <i class="fas fa-envelope-open mr-2"></i>
+                        Open Email Template
+                    </a>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="flex items-start mb-8">
+                <div class="step-number text-xl">4</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-map-pin text-red-600 mr-2"></i>
+                        Watch Your Story Appear on the Map
+                    </h3>
+                    <p class="text-gray-600 mb-4">Within seconds, your story will be processed and appear as a marker on the interactive MailMap! You'll receive a confirmation email with a direct link.</p>
+                    <div class="bg-green-50 border-l-4 border-green-500 p-4">
+                        <p class="text-green-700"><strong>What happens next:</strong> Your story gets a unique URL that you can share on social media to spread the joy!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="flex items-start mb-8">
+                <div class="step-number text-xl">5</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-edit text-orange-600 mr-2"></i>
+                        Manage Your Stories (Registered Users)
+                    </h3>
+                    <p class="text-gray-600 mb-4">Registered users can manually add, edit, and delete their photos and descriptions directly on the map.</p>
+                    <ul class="list-disc list-inside text-gray-600 mb-4">
+                        <li><strong>To add:</strong> Click on the map where you want to add a photo and wait 3 seconds, or drag and drop your photo onto the map.</li>
+                        <li><strong>To edit/delete:</strong> Find your existing story on the map and click on it to see management options.</li>
+                    </ul>
+                    <div class="bg-indigo-50 border-l-4 border-indigo-500 p-4">
+                        <p class="text-indigo-700"><strong>Note:</strong> This feature requires user registration and login.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6 (was 5) -->
+            <div class="flex items-start">
+                <div class="step-number text-xl">6</div>
+                <div class="flex-1">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-heart text-pink-600 mr-2"></i>
+                        Engage with the Community
+                    </h3>
+                    <p class="text-gray-600 mb-4">Visit the map to see your story alongside others from around the world. Like, share, and discover amazing places!</p>
+                    <a href="{{ base_url }}" target="_blank" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold inline-flex items-center hover:bg-blue-700 transition-colors no-underline">
+                        <i class="fas fa-globe mr-2"></i>
+                        Explore the Map
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pro Tips Section -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+                <i class="fas fa-lightbulb text-yellow-500 mr-3"></i>
+                Pro Tips & Best Practices
+            </h2>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="pro-tip p-6 rounded-lg">
+                    <h3 class="font-semibold text-gray-800 mb-2 flex items-center">
+                        <i class="fas fa-star mr-2"></i>
+                        Create Engaging Stories
+                    </h3>
+                    <p class="text-gray-700 text-sm">Use descriptive language, share personal experiences, and include interesting details about the location.</p>
+                </div>
+
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg">
+                    <h3 class="font-semibold text-blue-800 mb-2 flex items-center">
+                        <i class="fas fa-mobile-alt mr-2"></i>
+                        Photo Quality Tips
+                    </h3>
+                    <p class="text-blue-700 text-sm">Use good lighting, ensure GPS is enabled, and keep file sizes reasonable for faster processing.</p>
+                </div>
+
+                <div class="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg">
+                    <h3 class="font-semibold text-green-800 mb-2 flex items-center">
+                        <i class="fas fa-map-marker-alt mr-2"></i>
+                        Manual Coordinates
+                    </h3>
+                    <p class="text-green-700 text-sm">If your photo lacks GPS data, add coordinates in the subject line: <code class="bg-white px-2 py-1 rounded">lat:40.7128,lng:-74.0060</code></p>
+                </div>
+
+                <div class="bg-purple-50 border-l-4 border-purple-500 p-6 rounded-lg">
+                    <h3 class="font-semibold text-purple-800 mb-2 flex items-center">
+                        <i class="fas fa-share-alt mr-2"></i>
+                        Share Your Stories
+                    </h3>
+                    <p class="text-purple-700 text-sm">Each story gets a unique URL - perfect for sharing on social media and with friends!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Overview -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 flex items-center">
+                <i class="fas fa-gem text-indigo-600 mr-3"></i>
+                Platform Features
+            </h2>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-envelope text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Email-First</h3>
+                    <p class="text-gray-600 text-sm">No app downloads or registrations required for basic posting. Works with any email client.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-globe text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Interactive Map</h3>
+                    <p class="text-gray-600 text-sm">Explore stories from around the world on an interactive Google Map interface.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-users text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Community</h3>
+                    <p class="text-gray-600 text-sm">Vote on stories, report inappropriate content, and engage with fellow travelers.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-user-plus text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">User Accounts</h3>
+                    <p class="text-gray-600 text-sm">Register for an account to manually manage your stories on the map.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-bolt text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Real-Time</h3>
+                    <p class="text-gray-600 text-sm">Stories appear on the map within seconds of email submission.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-shield-alt text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Moderated</h3>
+                    <p class="text-gray-600 text-sm">Community-driven moderation ensures quality content and safe browsing.</p>
+                </div>
+
+                <div class="text-center">
+                    <div class="feature-icon mx-auto">
+                        <i class="fas fa-mobile-alt text-xl"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-800 mb-2">Mobile-Friendly</h3>
+                    <p class="text-gray-600 text-sm">Responsive design works perfectly on all devices and screen sizes.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ Section -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 flex items-center">
+                <i class="fas fa-question-circle text-blue-600 mr-3"></i>
+                Frequently Asked Questions
+            </h2>
+
+            <div class="space-y-6">
+                <div class="border-b border-gray-200 pb-6">
+                    <h3 class="font-semibold text-gray-800 mb-2">What if my photo doesn't have GPS data?</h3>
+                    <p class="text-gray-600">You can manually specify coordinates in the email subject line using the format: <code class="bg-gray-100 px-2 py-1 rounded">lat:40.7128,lng:-74.0060</code>. Registered users can also add photos directly on the map and set the location.</p>
+                </div>
+
+                <div class="border-b border-gray-200 pb-6">
+                    <h3 class="font-semibold text-gray-800 mb-2">How long does it take for my story to appear?</h3>
+                    <p class="text-gray-600">Stories typically appear on the map within seconds of sending your email. You'll receive a confirmation email with a direct link to your story.</p>
+                </div>
+
+                <div class="border-b border-gray-200 pb-6">
+                    <h3 class="font-semibold text-gray-800 mb-2">Can I edit or delete my story after posting?</h3>
+                    <p class="text-gray-600">Registered users can edit or delete their own stories directly on the map. For stories submitted via email without registration, if you need to remove content, please contact the moderation team through the reporting system.</p>
+                </div>
+
+                <div class="border-b border-gray-200 pb-6">
+                    <h3 class="font-semibold text-gray-800 mb-2">What image formats are supported?</h3>
+                    <p class="text-gray-600">Most common image formats are supported including JPEG, PNG, and GIF. JPEG images typically contain the best GPS data.</p>
+                </div>
+
+                <div class="border-b border-gray-200 pb-6">
+                    <h3 class="font-semibold text-gray-800 mb-2">Is there a limit to story length or image size?</h3>
+                    <p class="text-gray-600">Keep stories concise and engaging. Images should be under 10MB for optimal processing speed.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-gray-800 mb-2">How do I report inappropriate content?</h3>
+                    <p class="text-gray-600">Each story on the map has reporting options. The community-driven moderation system helps maintain content quality.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Community Guidelines -->
+        <div class="bg-white rounded-xl card-shadow p-8 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+                <i class="fas fa-hands-helping text-green-600 mr-3"></i>
+                Community Guidelines
+            </h2>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-semibold text-green-800 mb-3 flex items-center">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Do's
+                    </h3>
+                    <ul class="space-y-2 text-gray-600">
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-up text-green-500 mr-2 mt-1 text-sm"></i>
+                            Share authentic, personal experiences
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-up text-green-500 mr-2 mt-1 text-sm"></i>
+                            Respect privacy and local customs
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-up text-green-500 mr-2 mt-1 text-sm"></i>
+                            Use descriptive, engaging language
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-up text-green-500 mr-2 mt-1 text-sm"></i>
+                            Vote and engage positively with others
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-red-800 mb-3 flex items-center">
+                        <i class="fas fa-times-circle mr-2"></i>
+                        Don'ts
+                    </h3>
+                    <ul class="space-y-2 text-gray-600">
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-down text-red-500 mr-2 mt-1 text-sm"></i>
+                            Post inappropriate or offensive content
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-down text-red-500 mr-2 mt-1 text-sm"></i>
+                            Share copyrighted material without permission
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-down text-red-500 mr-2 mt-1 text-sm"></i>
+                            Spam the platform with multiple similar posts
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-thumbs-down text-red-500 mr-2 mt-1 text-sm"></i>
+                            Include personal information of others
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contact & Support -->
+        <div class="bg-white rounded-xl card-shadow p-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 flex items-center">
+                <i class="fas fa-life-ring text-purple-600 mr-3"></i>
+                Need Help?
+            </h2>
+
+            <div class="text-center">
+                <p class="text-gray-600 mb-6">Having trouble with MailMap? We're here to help!</p>
+                
+                <div class="flex flex-wrap justify-center gap-4">
+                    <a href="{{ base_url }}" target="_blank" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold inline-flex items-center hover:bg-blue-700 transition-colors no-underline">
+                        <i class="fas fa-globe mr-2"></i>
+                        Visit MailMap
+                    </a>
+                    
+                    <a href="mailto:support@mailmap.store?subject=Help Request - MailMap Support&body=Hi MailMap Team!%0A%0AI need help with:%0A%0A[Please describe your issue]%0A%0AThank you!"
+                       class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold inline-flex items-center hover:bg-green-700 transition-colors no-underline">
+                        <i class="fas fa-envelope mr-2"></i>
+                        Get Support
+                    </a>
+                </div>
+
+                <div class="mt-6 text-sm text-gray-500">
+                    <p>MailMap was created for the <a href="https://dev.to/challenges/postmark" target="_blank" class="text-blue-600 hover:underline">Postmark Challenge: Inbox Innovators</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8 mt-12">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <div class="flex flex-wrap justify-center items-center gap-6 mb-4">
+                <a href="{{ base_url }}" target="_blank" class="text-blue-400 hover:text-blue-300 transition-colors no-underline">
+                    <i class="fas fa-map-marked-alt mr-2"></i>
+                    MailMap Platform
+                </a>
+                <a href="mailto:{{ postmark_from_email }}?subject=Hello MailMap!&body=I'd like to share my story..."
+                   class="text-green-400 hover:text-green-300 transition-colors no-underline">
+                    <i class="fas fa-envelope mr-2"></i>
+                    Send Your Story
+                </a>
+                <a href="https://dev.to/prema_ananda/mailmap-transforming-emails-into-interactive-stories-on-google-maps-1f10" target="_blank" class="text-yellow-400 hover:text-yellow-300 transition-colors no-underline">
+                    <i class="fas fa-article mr-2"></i>
+                    Read the Story
+                </a>
+            </div>
+            <p class="text-gray-400 text-sm">
+                Transform your emails into interactive map stories • Share your world with MailMap
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

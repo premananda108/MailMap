@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Logging out...</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="{{ url_for('static', filename='js/firebase-init.js') }}"></script>
+    <script>
+        // Firebase app is initialized in firebase-init.js
+
+        firebase.auth().signOut().then(() => {
+            // After successful Firebase sign-out, redirect to the main login page
+            window.location.href = "{{ url_for('login') }}";
+        }).catch((error) => {
+            console.error("Error signing out from Firebase:", error);
+            // Still redirect to login page even if Firebase signout fails
+            window.location.href = "{{ url_for('login') }}";
+        });
+    </script>
+</head>
+<body>
+    <p>Logging out...</p>
+</body>
+</html>

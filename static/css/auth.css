@@ -1,0 +1,209 @@
+/* static/css/auth.css */
+
+html, body { /* Общие стили для страниц аутентификации */
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif; /* Или ваш предпочитаемый шрифт */
+    background-color: #f4f7f6; /* Светлый фон для всей страницы */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.auth-container {
+    background-color: #fff;
+    padding: 30px 40px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 420px; /* Немного шире для формы регистрации */
+    text-align: center;
+}
+
+.auth-container h1 {
+    color: #333;
+    margin-bottom: 25px;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.error-message {
+    /* Стили, которые должны применяться всегда (например, цвет текста, шрифт) */
+    color: #e74c3c; /* Этот цвет будет переопределен инлайновым стилем в HTML, если он есть */
+    font-size: 14px;
+    /* По умолчанию элемент скрыт */
+    display: none;
+}
+
+.error-message:not(:empty) {
+    /* Стили, которые применяются, только если элемент НЕ пустой */
+    display: block; /* Или другое значение display, если нужно (например, inline-block) */
+    background-color: #fddede;
+    border: 1px solid #f7cac9;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.auth-form .form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.auth-form label {
+    display: block;
+    margin-bottom: 8px;
+    color: #555;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.auth-form input[type="email"],
+.auth-form input[type="password"],
+.auth-form input[type="text"] { /* Добавлено для displayName */
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 16px;
+    transition: border-color 0.2s ease;
+}
+
+.auth-form input[type="email"]:focus,
+.auth-form input[type="password"]:focus,
+.auth-form input[type="text"]:focus { /* Добавлено для displayName */
+    border-color: #4A90E2;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.btn {
+    display: inline-block;
+    width: 100%;
+    padding: 12px 15px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background-color: #4A90E2;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #357ABD;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.auth-switch {
+    margin-top: 25px;
+    font-size: 14px;
+    color: #555;
+}
+
+.auth-switch a {
+    color: #4A90E2;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.auth-switch a:hover {
+    text-decoration: underline;
+}
+
+.auth-divider {
+    border: 0;
+    height: 1px;
+    background-color: #e0e0e0;
+    margin: 25px 0;
+}
+
+.social-signin-text {
+    font-size: 14px;
+    color: #777;
+    margin-bottom: 15px;
+}
+
+.btn-google {
+    background-color: #fff;
+    color: #444;
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn-google:hover {
+    background-color: #f8f8f8;
+    border-color: #ccc;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.google-logo,
+.apple-logo{
+    width: 18px;
+    height: 18px;
+}
+
+.auth-note {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #888;
+}
+
+@media (max-width: 480px) {
+    .auth-container {
+        padding: 25px 20px; /* Немного другие отступы для мобильных */
+        margin: 10px;
+    }
+
+    .auth-container h1 {
+        font-size: 24px;
+    }
+}
+
+/* Styles for flashed messages */
+.flashes {
+    list-style-type: none;
+    padding: 0;
+    margin-bottom: 1em;
+}
+.flashes li {
+    padding: 0.75em 1em; /* Increased padding slightly for better appearance */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 0.5em;
+    font-size: 14px; /* Consistent font size */
+}
+.flashes .success {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+.flashes .error { /* Already have .error-message, but this is for flashed errors */
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+}
+.flashes .warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border-color: #ffeeba;
+}
+/* Ensure flashed messages are not hidden if the error-message class has display: none */
+.flashes li.error-message {
+    display: block !important; /* Override if .error-message has display: none */
+}

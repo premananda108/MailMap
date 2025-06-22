@@ -14,6 +14,9 @@ from werkzeug.utils import secure_filename
 load_dotenv()
 
 from email_utils import create_email_notification_record, send_pending_notification  # Assuming this is handled
+import utils
+import firestore_utils
+import webhook_handler
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -58,12 +61,13 @@ def before_request_funcs():
 
 
 # Configuration
-INBOUND_URL_TOKEN = os.environ.get('INBOUND_URL_TOKEN', 'DEFAULT_INBOUND_TOKEN_IF_NOT_SET')
-FIREBASE_STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', 'your-project.appspot.com')
-GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-secret-key-for-development')
-ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif'}
-MAX_IMAGE_SIZE = 6 * 1024 * 1024  # 6MB
+app_config = utils.get_app_config()
+INBOUND_URL_TOKEN = app_config['INBOUND_URL_TOKEN']
+FIREBASE_STORAGE_BUCKET = app_config['FIREBASE_STORAGE_BUCKET']
+GOOGLE_MAPS_API_KEY = app_config['GOOGLE_MAPS_API_KEY']
+app.secret_key = app_config['FLASK_SECRET_KEY']
+ALLOWED_IMAGE_EXTENSIONS = app_config['ALLOWED_IMAGE_EXTENSIONS']
+MAX_IMAGE_SIZE = app_config['MAX_IMAGE_SIZE']
 
 # Firebase Initialization
 if not firebase_admin._apps:
@@ -218,72 +222,34 @@ def postmark_webhook():
         app.logger.error(f"Error parsing JSON data in Postmark webhook: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': f'Error parsing request data: {str(e)}'}), 200
 
-    if not verify_inbound_token(token_from_query):
-        app.logger.warning(
-            f"Invalid token in Postmark webhook URL from {request.remote_addr}. Token: {token_from_query}")
-        return jsonify({'status': 'error', 'message': 'Invalid token'}), 200
+    # Use the new improved webhook handler
+    result = webhook_handler.handle_postmark_webhook_request(
+        request_json_data=data,
+        query_token=token_from_query,
+        app_logger=app.logger,
+        db_client=db,
+        bucket=bucket,
+        app_context=app.app_context(),
+        inbound_url_token_config=INBOUND_URL_TOKEN,
+        allowed_image_extensions_config=ALLOWED_IMAGE_EXTENSIONS,
+        max_image_size_config=MAX_IMAGE_SIZE,
+        app_config=app_config
+    )
 
-    try:
-        from_email = data.get('FromFull', {}).get('Email', '') if data.get('FromFull') else data.get('From', '')
-        subject = data.get('Subject', '')
-        text_body = data.get('TextBody', '')
-        html_body = data.get('HtmlBody', '')
-        attachments = data.get('Attachments', [])
-
-        app.logger.info(
-            f"Received email via Postmark from {from_email} with subject: '{subject}'. Attachments: {len(attachments)}")
-
-        image_url, exif_lat, exif_lng = process_email_attachments(attachments)
-
-        if not image_url:
-            app.logger.warning(
-                f"No suitable images found in attachments from email by {from_email}, subject: '{subject}'.")
-            return jsonify({'status': 'error', 'message': 'No valid images found in attachments'}), 200
-
-        latitude, longitude = exif_lat, exif_lng
-        if latitude is None or longitude is None:
-            subject_lat, subject_lng = parse_location_from_subject(subject)
-            if subject_lat is not None and subject_lng is not None:
-                latitude, longitude = subject_lat, subject_lng
-                app.logger.info(f"Used coordinates from subject: lat={latitude}, lng={longitude}")
-
-        if latitude is None or longitude is None:
-            app.logger.warning(f"Could not determine coordinates for post from {from_email}, subject: '{subject}'.")
-            return jsonify({
-                'status': 'error',
-                'message': 'Location coordinates not found. Please include GPS data in image or specify in subject as lat:XX.XXX,lng:YY.YYY'
-            }), 200  # 200 to prevent Postmark retries for content issues
-
-        content_data = {
-            'submitterEmail': from_email, 'text': text_body or html_body,
-            'imageUrl': image_url, 'latitude': latitude, 'longitude': longitude,
-            'timestamp': datetime.utcnow(), 'status': 'published',
-            'voteCount': 0, 'reportedCount': 0, 'subject': subject
-        }
-        content_id = save_content_to_firestore(content_data)
-
-        if content_id:
-            app.logger.info(f"Content saved successfully with ID: {content_id} from email by {from_email}")
-            if from_email:
-                notification_id = create_email_notification_record(db, content_id, from_email)
-                if notification_id:
-                    # Consider making email sending asynchronous for production
-                    email_sent_ok = send_pending_notification(db, notification_id, app_context=app.app_context())
-                    if email_sent_ok:
-                        app.logger.info(
-                            f'Notification email process initiated for {notification_id} (content: {content_id}).')
-                    else:
-                        app.logger.warning(
-                            f'Notification email process failed for {notification_id} (content: {content_id}).')
-                else:
-                    app.logger.warning(f"Failed to create notification record for content {content_id}")
-            return jsonify({'status': 'success', 'contentId': content_id, 'message': 'Content published successfully'})
-        else:
-            app.logger.error(f"Failed to save content from email by {from_email}, subject: '{subject}'.")
-            return jsonify({'status': 'error', 'message': 'Failed to save content'}), 500
-    except Exception as e:
-        app.logger.error(f"Critical error processing Postmark webhook: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': f'Internal server error: {str(e)}'}), 500
+    # Return response based on result
+    http_status_code = result.get('http_status_code', 200)
+    response_data = {
+        'status': result['status'],
+        'message': result['message']
+    }
+    
+    # Add additional fields if available
+    if 'contentIds' in result:
+        response_data['contentIds'] = result['contentIds']
+    if 'skipped_count' in result:
+        response_data['skipped_count'] = result['skipped_count']
+    
+    return jsonify(response_data), http_status_code
 
 
 # --- ADMIN PANEL ---
