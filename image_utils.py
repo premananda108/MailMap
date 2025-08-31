@@ -7,14 +7,14 @@ from PIL import Image
 import exifread
 import logging
 import uuid
-import base64
-from firebase_admin import storage
+import os
+# from firebase_admin import storage # bucket is passed as a parameter
 
 # Configure module logger
 # This logger will inherit the configuration from the Flask app logger if this module
 # is imported after the Flask app's logging is configured.
 # If run standalone, it would need its own handler configuration.
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # Using this logger, assuming it's configured by the app
 # To ensure it logs if run standalone or if Flask logger isn't set to a low enough level:
 # if not logger.handlers: # Add a basic handler if no handlers are configured
 #     logger.setLevel(logging.DEBUG) # Set to DEBUG to see all debug messages
@@ -241,135 +241,261 @@ def extract_gps_coordinates(image_data):
     return None, None
 
 
-def process_uploaded_image(image_bytes, original_filename, app_logger, bucket, allowed_extensions, max_size):
+def upload_image_to_gcs(image_data, filename, app_logger, bucket, content_type=None):
     """
-    Process uploaded image: validate, extract GPS, upload to GCS.
-    
+    Uploads image data to Google Cloud Storage.
     Args:
-        image_bytes: Raw image bytes
-        original_filename: Original filename
-        app_logger: Application logger instance
-        bucket: Firebase Storage bucket
-        allowed_extensions: Set of allowed file extensions
-        max_size: Maximum file size in bytes
-    
+        image_data (bytes): The image data to upload.
+        filename (str): The **unique** filename to use in GCS (e.g., "content_images/uuid.ext").
+        app_logger (logging.Logger): Logger instance for logging.
+        bucket (google.cloud.storage.bucket.Bucket): GCS bucket object.
+        content_type (str, optional): The content type of the image. Defaults to None.
     Returns:
-        tuple: (image_url, latitude, longitude) or (None, None, None) if processing failed
-    """
-    app_logger.debug(f"Processing uploaded image: {original_filename}")
-    
-    # Validate file extension
-    if not original_filename or '.' not in original_filename:
-        app_logger.warning(f"Invalid filename: {original_filename}")
-        return None, None, None
-    
-    file_extension = original_filename.split('.')[-1].lower()
-    if file_extension not in allowed_extensions:
-        app_logger.warning(f"Unsupported file extension: {file_extension}")
-        return None, None, None
-    
-    # Validate file size
-    if len(image_bytes) > max_size:
-        app_logger.warning(f"File too large: {len(image_bytes)} bytes (max: {max_size})")
-        return None, None, None
-    
-    try:
-        # Extract GPS coordinates
-        app_logger.debug(f"Extracting GPS coordinates from {original_filename}")
-        lat, lng = extract_gps_coordinates(image_bytes)
-        app_logger.debug(f"GPS extraction result for {original_filename}: lat={lat}, lng={lng}")
-        
-        # Upload to GCS
-        app_logger.debug(f"Uploading {original_filename} to GCS")
-        image_url = upload_image_to_gcs(image_bytes, original_filename, bucket, app_logger)
-        
-        if image_url:
-            app_logger.info(f"Successfully processed {original_filename}: URL={image_url}, GPS=({lat}, {lng})")
-            return image_url, lat, lng
-        else:
-            app_logger.error(f"Failed to upload {original_filename} to GCS")
-            return None, None, None
-            
-    except Exception as e:
-        app_logger.error(f"Error processing image {original_filename}: {e}", exc_info=True)
-        return None, None, None
-
-
-def upload_image_to_gcs(image_data, filename, bucket, app_logger):
-    """
-    Upload image to Google Cloud Storage.
-    
-    Args:
-        image_data: Raw image bytes
-        filename: Original filename
-        bucket: Firebase Storage bucket
-        app_logger: Application logger instance
-    
-    Returns:
-        str: Public URL of uploaded image or None if upload failed
+        str: The public URL of the uploaded image, or None on failure.
     """
     try:
-        file_extension = filename.split('.')[-1].lower()
-        unique_filename = f"content_images/{uuid.uuid4()}.{file_extension}"
-        
-        blob = bucket.blob(unique_filename)
+        current_logger = app_logger if app_logger else logger
+
+        # The filename passed is assumed to be the final, unique GCS path/object name.
+        # Example: "content_images/some_uuid.jpg"
+        blob = bucket.blob(filename)
+
+        ct_to_upload = content_type
+        if not ct_to_upload:
+            # Try to guess from filename extension if not provided
+            file_extension = os.path.splitext(filename)[1].lstrip('.').lower()
+            if file_extension in ["jpg", "jpeg"]:
+                ct_to_upload = "image/jpeg"
+            elif file_extension == "png":
+                ct_to_upload = "image/png"
+            elif file_extension == "gif":
+                ct_to_upload = "image/gif"
+            # Add more common image types as needed
+            else:
+                current_logger.warning(
+                    f"Could not determine content type for '{filename}' from extension '{file_extension}'. "
+                    f"Defaulting to 'application/octet-stream'."
+                )
+                ct_to_upload = 'application/octet-stream'
+
+        current_logger.debug(f"Uploading to GCS as '{filename}' with content type '{ct_to_upload}'.")
+
         blob.upload_from_string(
             image_data,
-            content_type=f'image/{file_extension}'
+            content_type=ct_to_upload
         )
         blob.make_public()
-        
-        app_logger.info(f"Successfully uploaded {filename} to GCS: {blob.public_url}")
+        current_logger.info(f"Successfully uploaded '{filename}' to GCS. Public URL: {blob.public_url}")
         return blob.public_url
-        
     except Exception as e:
-        app_logger.error(f"Error uploading {filename} to GCS: {e}", exc_info=True)
+        current_logger = app_logger if app_logger else logger
+        current_logger.error(f"Error uploading image to GCS: {filename}. Error: {e}", exc_info=True)
         return None
+
+
+def process_uploaded_image(image_bytes, original_filename, app_logger, bucket, allowed_extensions, max_size):
+    """
+    Processes an uploaded image: validates, extracts GPS, uploads to GCS.
+    Args:
+        image_bytes (bytes): Raw bytes of the image.
+        original_filename (str): The original name of the uploaded file.
+        app_logger (logging.Logger): Logger instance.
+        bucket (google.cloud.storage.bucket.Bucket): GCS bucket object.
+        allowed_extensions (set): Set of allowed file extensions (e.g., {'jpg', 'png'}).
+        max_size (int): Maximum allowed image size in bytes.
+    Returns:
+        tuple: (image_url, lat, lng) or (None, None, None) if processing fails.
+    """
+    current_logger = app_logger if app_logger else logger # Prefer app_logger
+
+    if not original_filename or '.' not in original_filename:
+        current_logger.warning(f"File ('{original_filename}') has no name or extension. Skipping.")
+        return None, None, None
+
+    file_extension = os.path.splitext(original_filename)[1].lstrip('.').lower()
+    if not file_extension: # This case should ideally be caught by the check above.
+        current_logger.warning(f"File '{original_filename}' has no extension after splitting. Skipping.")
+        return None, None, None
+
+    if file_extension not in allowed_extensions:
+        current_logger.warning(
+            f"File '{original_filename}' has unsupported extension '{file_extension}'. Skipping."
+        )
+        return None, None, None
+
+    if len(image_bytes) > max_size:
+        current_logger.warning(
+            f"File {original_filename} is too large ({len(image_bytes)} bytes). MAX_IMAGE_SIZE is {max_size}. Skipping."
+        )
+        return None, None, None
+
+    current_logger.debug(f"Processing image '{original_filename}': Extracting EXIF GPS data.")
+    lat, lng = extract_gps_coordinates(image_bytes) # Uses the module logger internally
+    current_logger.debug(f"Image '{original_filename}': EXIF GPS: lat={lat}, lng={lng}")
+
+    current_logger.debug(f"Image '{original_filename}': Uploading to GCS.")
+    image_url = upload_image_to_gcs(image_bytes, original_filename, current_logger, bucket)
+
+    if image_url:
+        current_logger.info(
+            f"Image '{original_filename}': Successfully processed. URL: {image_url}, GPS: ({lat}, {lng})"
+        )
+        return image_url, lat, lng
+    else:
+        current_logger.warning(
+            f"Image '{original_filename}': Failed to upload to GCS. No URL returned."
+        )
+        return None, None, None
 
 
 if __name__ == '__main__':
     # This block is for local testing of image_utils.py
     # It needs its own logger configuration if not run as part of the Flask app.
-    if not logger.handlers:
+    if not logger.handlers: # Check module logger specifically
         logger.setLevel(logging.DEBUG)
         ch = logging.StreamHandler() # Output to console
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s')
         ch.setFormatter(formatter)
         logger.addHandler(ch)
+        logger.info("Configured basic StreamHandler for image_utils.py standalone testing.")
+
 
     logger.info("Running image_utils.py standalone tests...")
 
-    test_image_path = '2.jpg' # Assumes '2.jpg' is in the same folder for testing
+    # Mock GCS bucket and logger for standalone testing
+    class MockBucket:
+        def blob(self, name):
+            logger.debug(f"[MockBucket] blob(name='{name}') called.")
+            return MockBlob(name, self)
+        def __init__(self, name="mock_bucket"):
+            self.name = name
+            logger.debug(f"[MockBucket] Initialized with name '{self.name}'.")
 
-    logger.info("\n--- Test 1: Empty/dummy image (no EXIF) ---")
-    empty_image_bytes_io = io.BytesIO()
+    class MockBlob:
+        def __init__(self, name, bucket_ref):
+            self.name = name
+            self.bucket = bucket_ref # Reference to the mock bucket
+            self.public_url = f"http://fake.storage.googleapis.com/{self.bucket.name}/{self.name}"
+            self._data = None
+            self._content_type = None
+            logger.debug(f"[MockBlob] Initialized for '{name}'. Public URL: {self.public_url}")
+
+        def upload_from_string(self, data, content_type):
+            self._data = data
+            self._content_type = content_type
+            logger.info(
+                f"[MockBlob] upload_from_string for '{self.name}'. Content-Type: {content_type}. Data length: {len(data)} bytes."
+            )
+
+        def make_public(self):
+            logger.info(f"[MockBlob] make_public for '{self.name}'.")
+
+
+    mock_gcs_bucket = MockBucket()
+    mock_logger = logger # Use the configured module logger for tests
+
+    # Test image data (replace with actual image bytes if needed for more thorough testing)
+    # Creating a minimal valid JPEG for testing structure, not content extraction
+    minimal_jpeg_io = io.BytesIO()
     try:
-        Image.new('RGB', (60, 30), color='red').save(empty_image_bytes_io, format='JPEG')
-        lat_empty, lon_empty = extract_gps_coordinates(empty_image_bytes_io.getvalue())
-        if lat_empty is None and lon_empty is None:
-            logger.info("Result for empty image: Coordinates not extracted (Expected).")
-        else:
-            logger.warning(f"Result for empty image: Lat={lat_empty}, Lon={lon_empty} (Unexpected).")
+        Image.new('RGB', (10, 10), color='blue').save(minimal_jpeg_io, format='JPEG')
+        minimal_jpeg_bytes = minimal_jpeg_io.getvalue()
     except Exception as e:
-        logger.error(f"Error during empty image test: {e}", exc_info=True)
+        logger.error(f"Failed to create minimal JPEG for testing: {e}")
+        minimal_jpeg_bytes = b'' # Fallback to empty bytes
+
+    logger.info("\n--- Test 1: process_uploaded_image with valid data ---")
+    test_filename_valid = "test_image.jpg"
+    allowed_exts = {'jpg', 'jpeg', 'png', 'gif'}
+    max_img_size = 10 * 1024 * 1024 # 10MB
+
+    if minimal_jpeg_bytes:
+        url, lat, lng = process_uploaded_image(
+            minimal_jpeg_bytes, test_filename_valid, mock_logger, mock_gcs_bucket, allowed_exts, max_img_size
+        )
+        if url and "content_images/" in url and ".jpg" in url:
+            logger.info(f"process_uploaded_image (valid) PASSED. URL: {url}, Lat: {lat}, Lng: {lng}")
+        else:
+            logger.error(f"process_uploaded_image (valid) FAILED. URL: {url}, Lat: {lat}, Lng: {lng}")
+    else:
+        logger.warning("Skipping 'process_uploaded_image with valid data' test as minimal_jpeg_bytes is empty.")
 
 
-    logger.info(f"\n--- Test 2: Image with potential EXIF data ({test_image_path}) ---")
+    logger.info("\n--- Test 2: process_uploaded_image with unsupported extension ---")
+    test_filename_unsupported_ext = "test_image.txt"
+    url_txt, _, _ = process_uploaded_image(
+        b"some text data", test_filename_unsupported_ext, mock_logger, mock_gcs_bucket, allowed_exts, max_img_size
+    )
+    if url_txt is None:
+        logger.info("process_uploaded_image (unsupported ext) PASSED.")
+    else:
+        logger.error(f"process_uploaded_image (unsupported ext) FAILED. URL: {url_txt}")
+
+
+    logger.info("\n--- Test 3: process_uploaded_image with image too large ---")
+    test_filename_large = "large_image.jpg"
+    # Create dummy bytes larger than max_size for testing this specific check
+    # Note: max_img_size is 10MB for this test case.
+    # Creating actual large image data can be slow/memory intensive.
+    # For unit test, just checking the size logic is often enough.
+    # If more detailed test for upload_image_to_gcs with large file is needed,
+    # it should be a separate, more focused test.
+    large_image_bytes = b"a" * (max_img_size + 1)
+    url_large, _, _ = process_uploaded_image(
+        large_image_bytes, test_filename_large, mock_logger, mock_gcs_bucket, allowed_exts, max_img_size
+    )
+    if url_large is None:
+        logger.info("process_uploaded_image (too large) PASSED.")
+    else:
+        logger.error(f"process_uploaded_image (too large) FAILED. URL: {url_large}")
+
+    logger.info("\n--- Test 4: upload_image_to_gcs basic functionality ---")
+    if minimal_jpeg_bytes:
+        gcs_url = upload_image_to_gcs(minimal_jpeg_bytes, "direct_upload_test.jpeg", mock_logger, mock_gcs_bucket)
+        if gcs_url and "content_images/" in gcs_url and ".jpeg" in gcs_url:
+            logger.info(f"upload_image_to_gcs basic PASSED. URL: {gcs_url}")
+        else:
+            logger.error(f"upload_image_to_gcs basic FAILED. URL: {gcs_url}")
+    else:
+        logger.warning("Skipping 'upload_image_to_gcs basic functionality' test as minimal_jpeg_bytes is empty.")
+
+
+    logger.info("\n--- Test 5: GPS Extraction from a real image (if available) ---")
+    # This test is similar to the original one for extract_gps_coordinates
+    # but now it's integrated into the new structure.
+    # Assumes '2.jpg' is in the same folder for testing, and it has EXIF GPS.
+    # This part relies on having a real image with GPS data.
+    real_test_image_path = '2.jpg'
     try:
-        with open(test_image_path, 'rb') as f:
-            image_bytes_real = f.read()
-        logger.info(f"Read {len(image_bytes_real)} bytes from {test_image_path}")
-        lat_real, lon_real = extract_gps_coordinates(image_bytes_real)
+        with open(real_test_image_path, 'rb') as f:
+            image_bytes_real_exif = f.read()
+        logger.info(f"Read {len(image_bytes_real_exif)} bytes from {real_test_image_path} for GPS test.")
 
-        if lat_real is not None and lon_real is not None:
-            # NaN check is important as math operations on NaN can be tricky
-            if math.isnan(lat_real) or math.isnan(lon_real):
-                logger.warning(f"Result for {test_image_path}: Coordinates contain NaN. Lat={lat_real}, Lon={lon_real}")
+        # Test extract_gps_coordinates directly as it's a core part
+        lat_exif, lon_exif = extract_gps_coordinates(image_bytes_real_exif)
+        if lat_exif is not None and lon_exif is not None:
+            logger.info(f"extract_gps_coordinates with {real_test_image_path}: Lat={lat_exif:.6f}, Lon={lon_exif:.6f}")
+        else:
+            logger.warning(f"extract_gps_coordinates with {real_test_image_path}: No GPS data found or error.")
+
+        # Also test it via process_uploaded_image
+        # Ensure this image doesn't exceed max_img_size for this test path
+        if len(image_bytes_real_exif) <= max_img_size:
+            url_exif, lat_pui, lon_pui = process_uploaded_image(
+                image_bytes_real_exif, real_test_image_path, mock_logger, mock_gcs_bucket, allowed_exts, max_img_size
+            )
+            if url_exif:
+                logger.info(f"process_uploaded_image with {real_test_image_path}: URL={url_exif}, Lat={lat_pui}, Lon={lon_pui}")
+                if lat_pui is None or lon_pui is None:
+                    logger.warning(f"   ...but GPS data was not extracted via process_uploaded_image path.")
             else:
-                logger.info(f"Result for {test_image_path}: Lat={lat_real:.6f}, Lon={lon_real:.6f}")
+                logger.error(f"process_uploaded_image with {real_test_image_path} FAILED to upload.")
         else:
-            logger.info(f"Result for {test_image_path}: Coordinates not extracted or invalid.")
+            logger.warning(f"Skipping process_uploaded_image test for {real_test_image_path} as it exceeds max_size for this test case.")
+
     except FileNotFoundError:
-        logger.error(f"Test file not found: {test_image_path}")
+        logger.warning(f"Test file not found: {real_test_image_path}. GPS extraction test with real image skipped.")
     except Exception as e:
-        logger.error(f"Error testing file {test_image_path}: {e}", exc_info=True)
+        logger.error(f"Error testing file {real_test_image_path}: {e}", exc_info=True)
+
+    logger.info("\n--- image_utils.py standalone tests finished ---")

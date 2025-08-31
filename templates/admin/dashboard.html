@@ -15,8 +15,17 @@
 
     <div class="admin-content">
         <div class="admin-sidebar">
-            <div class="menu-item active"><a href="/admin/dashboard">Posts for Moderation</a></div>
-            <div class="menu-item"><a href="/admin/dashboard?status=all">All Posts</a></div>
+            <div class="menu-item {% if not current_view and active_status_filter == 'for_moderation' %}active{% endif %}">
+                <a href="/admin/dashboard?status=for_moderation">Posts for Moderation</a>
+            </div>
+            <div class="menu-item {% if current_view == 'reported' %}active{% endif %}">
+                <a href="/admin/dashboard?view=reported">Reported Posts</a>
+            </div>
+            <div class="menu-item {% if not current_view and active_status_filter == 'all' %}active{% endif %}">
+                <a href="/admin/dashboard?status=all">All Posts</a>
+            </div>
+            <!-- Add other status links here if they are to be permanent sidebar items -->
+            <!-- For example, Published and Rejected are currently only in the dropdown -->
         </div>
 
         <div class="admin-main">
@@ -52,6 +61,7 @@
                     <div class="item-meta">
                         <div>Votes: {{ item.voteCount or 0 }}</div>
                         <div>Reports: {{ item.reportedCount or 0 }}</div>
+                        <div>User ID: {{ item.userId }}</div>
                         <div>Date: {{ item.timestamp|datetime }}</div>
                     </div>
 
@@ -75,6 +85,7 @@
                         {% elif item.status == 'published' %}
                         <button class="btn-reject" onclick="rejectContent('{{ item.itemId }}')">Reject</button>
                         {% endif %}
+                        <button class="btn-delete" onclick="deleteContent('{{ item.itemId }}')">Delete</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -132,6 +143,35 @@
                 .catch(error => {
                     console.error('Error:', error);
                     alert('An error occurred while processing the request');
+                });
+            }
+        }
+
+        function deleteContent(contentId) {
+            if (confirm('Are you sure you want to permanently delete this post? This action cannot be undone.')) {
+                fetch(`/admin/api/content/${contentId}/delete`, {
+                    method: 'POST', // Matches the method defined in app.py
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(data.message || 'Post deleted successfully!');
+                        // Remove the item from the DOM directly or reload the page
+                        // For simplicity, reloading the page is often sufficient:
+                        location.reload();
+                        // Alternatively, to remove the element directly:
+                        // const itemElement = document.querySelector(`.content-item[data-item-id='${contentId}']`);
+                        // if (itemElement) {
+                        //     itemElement.remove();
+                        // }
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to delete post.'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while processing the delete request.');
                 });
             }
         }

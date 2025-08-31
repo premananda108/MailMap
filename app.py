@@ -1,37 +1,107 @@
 import os
-import base64
-import re
+from flask_cors import CORS
 from datetime import datetime
-import uuid
 from dotenv import load_dotenv
-from image_utils import extract_gps_coordinates  # Assuming this is handled
 from flask import Flask, request, jsonify, current_app, \
-    render_template, session, redirect, url_for
+    render_template, session, redirect, url_for, flash  # Added flash
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
-from werkzeug.utils import secure_filename
-
-load_dotenv()
-
-from email_utils import create_email_notification_record, send_pending_notification  # Assuming this is handled
-import utils
-import firestore_utils
-import webhook_handler
+from firebase_admin import credentials, firestore, storage, auth
 
 import logging
 from logging.handlers import RotatingFileHandler
+from google.cloud.firestore import SERVER_TIMESTAMP
+
+import firestore_utils
+
+load_dotenv()
+
+# Firebase Initialization
+FIREBASE_STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', 'your-project.appspot.com')
+
+if not firebase_admin._apps:
+    if os.environ.get('TEST_ENV') == 'true':
+        # Use mock credentials for testing
+        from google.auth import credentials as google_auth_credentials
+
+        cred = google_auth_credentials.AnonymousCredentials()
+        firebase_admin.initialize_app(cred, {
+            'projectId': 'mock-project',  # Required for mock credentials
+            'storageBucket': FIREBASE_STORAGE_BUCKET
+        })
+        print("INFO: Firebase initialized with MOCK credentials for TEST_ENV.")
+    else:
+        # Original initialization for production/development
+        try:
+            cred = credentials.ApplicationDefault()
+            firebase_admin.initialize_app(cred, {
+                'storageBucket': FIREBASE_STORAGE_BUCKET
+            })
+        except Exception as e:
+            print(f"CRITICAL: Failed to initialize Firebase Admin SDK: {e}")
+            # Consider exiting if Firebase is critical
+            # import sys
+        # sys.exit(1)
+
+# Initialize db and bucket after Firebase app initialization
+if os.environ.get('TEST_ENV') == 'true':
+    # In test_env, firebase_admin.initialize_app was called with mock credentials
+    # So, firestore.client() and storage.bucket() will use that mock app.
+    db = firestore.client()
+    bucket = storage.bucket()  # This might also need careful handling if it makes external calls
+    print("INFO: Firestore db and Storage bucket initialized using MOCK Firebase app.")
+else:
+    try:
+        db = firestore.client()
+        bucket = storage.bucket()
+    except Exception as e:
+        print(f"CRITICAL: Failed to create Firestore/Storage clients: {e}")
+        # import sys
+        # sys.exit(1)
+
+# Project-specific imports (after Firebase init)
+from email_utils import create_email_notification_record, send_pending_notification
+from webhook_handlers import handle_postmark_webhook_request
+from admin_services import (
+    verify_admin_id_token, get_dashboard_items,
+    approve_content, reject_content, delete_content_admin
+)
+from api_services import (
+    create_new_content_from_api,
+    process_content_vote,
+    process_content_report,
+    update_content_item as api_update_content_item  # Alias to avoid naming conflict if any
+)
+from view_services import (
+    get_home_page_data,
+    get_post_page_data,
+    format_datetime_filter as view_format_datetime_filter
+)
+from firestore_utils import \
+    delete_content_item  # Only delete_content_item might be needed directly if not part of a service
+# create_user, get_user_by_email, get_user, migrate_content_ownership are now handled by UserService
+from user_service import UserService
 
 app = Flask(__name__, static_folder='static')
+CORS(app)
+app.jinja_env.filters['datetime'] = view_format_datetime_filter
 
-# Set up logging
+# Logging setup
 app.logger.setLevel(logging.INFO)
-
 file_handler = RotatingFileHandler('app.log', maxBytes=10000000, backupCount=5)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 ))
 app.logger.addHandler(file_handler)
 app.logger.info('Flask app startup')
+
+# App Configuration
+INBOUND_URL_TOKEN = os.environ.get('INBOUND_URL_TOKEN', 'DEFAULT_INBOUND_TOKEN_IF_NOT_SET')
+GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-secret-key-for-development')
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif'}
+MAX_IMAGE_SIZE = 6 * 1024 * 1024  # 6MB
+PHOTO_UPLOAD_LIMIT = int(os.environ.get('PHOTO_UPLOAD_LIMIT', 5))
+app.config['PHOTO_UPLOAD_LIMIT'] = PHOTO_UPLOAD_LIMIT
 
 
 @app.route('/.well-known/appspecific/com.chrome.devtools.json')
@@ -41,53 +111,21 @@ def chrome_devtools():
 
 @app.before_request
 def before_request_funcs():
-    # Sanitize HTTP_HOST
     original_host = request.environ.get('HTTP_HOST')
     if original_host and ',' in original_host:
         new_host = original_host.split(',', 1)[0]
         request.environ['HTTP_HOST'] = new_host
         current_app.logger.info(f"Sanitizing HTTP_HOST: Original '{original_host}', New: '{new_host}'")
 
-    # Check content length
     if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
         if request.content_length is None and request.headers.get('Transfer-Encoding', '').lower() != 'chunked':
             current_app.logger.warning(
                 f"Request to {request.path} from {request.remote_addr} without Content-Length or chunked encoding."
             )
-            # It's unusual to 'pass' here. Typically, you might return an error response
-            # or allow processing to continue if this is not a critical check.
-            # For now, keeping original behavior.
             pass
 
 
-# Configuration
-app_config = utils.get_app_config()
-INBOUND_URL_TOKEN = app_config['INBOUND_URL_TOKEN']
-FIREBASE_STORAGE_BUCKET = app_config['FIREBASE_STORAGE_BUCKET']
-GOOGLE_MAPS_API_KEY = app_config['GOOGLE_MAPS_API_KEY']
-app.secret_key = app_config['FLASK_SECRET_KEY']
-ALLOWED_IMAGE_EXTENSIONS = app_config['ALLOWED_IMAGE_EXTENSIONS']
-MAX_IMAGE_SIZE = app_config['MAX_IMAGE_SIZE']
-
-# Firebase Initialization
-if not firebase_admin._apps:
-    # Проверяем, запущены ли мы в тестовой среде
-    if os.environ.get('TESTING') == 'true' or os.environ.get('TEST_ENV') == 'true':
-        # Для тестов инициализируем без credentials
-        firebase_admin.initialize_app(options={'projectId': 'test-project'})
-    else:
-        # Для production используем настоящие credentials
-        cred = credentials.ApplicationDefault()
-        firebase_admin.initialize_app(cred, {
-            'storageBucket': FIREBASE_STORAGE_BUCKET
-        })
-
-# Теперь безопасно создаем клиент Firestore и Storage
-db = firestore.client()
-bucket = storage.bucket()  # Initialize bucket here after firebase_admin.initialize_app
-
-
-def show_server_urls():  # This function uses print, intended for local dev startup
+def show_server_urls():
     import socket
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -105,182 +143,63 @@ with app.app_context():
     pass
 
 
-def verify_inbound_token(token_to_verify):
-    if not token_to_verify:
-        return False
-    return token_to_verify == INBOUND_URL_TOKEN
-
-
-def parse_location_from_subject(subject):
-    if not subject:
-        return None, None
-    pattern = r'lat:([-+]?\d*\.?\d+),lng:([-+]?\d*\.?\d+)'
-    match = re.search(pattern, subject, re.IGNORECASE)
-    if match:
-        try:
-            lat = float(match.group(1))
-            lng = float(match.group(2))
-            if -90 <= lat <= 90 and -180 <= lng <= 180:
-                return lat, lng
-        except ValueError:
-            pass
-    return None, None
-
-
-def upload_image_to_gcs(image_data, filename):
-    try:
-        file_extension = filename.split('.')[-1].lower()
-        unique_filename = f"content_images/{uuid.uuid4()}.{file_extension}"
-        blob = bucket.blob(unique_filename)
-        blob.upload_from_string(
-            image_data,
-            content_type=f'image/{file_extension}'
-        )
-        blob.make_public()
-        return blob.public_url
-    except Exception as e:
-        app.logger.error(f"Error uploading image to GCS: {filename}. Error: {e}", exc_info=True)
-        return None
-
-
-def save_content_to_firestore(data):
-    try:
-        data['notificationSent'] = False
-        data['notificationSentAt'] = None
-        data['shortUrl'] = None
-        doc_ref = db.collection('contentItems').document()
-        doc_ref.set(data)
-        doc_ref.update({'shortUrl': doc_ref.id})
-        return doc_ref.id
-    except Exception as e:
-        app.logger.error(f"Error saving to Firestore. Data: {str(data)[:200]}. Error: {e}", exc_info=True)
-        return None
-
-
-def process_email_attachments(attachments):
-    if not attachments:
-        app.logger.info("No attachments found in email.")
-        return None, None, None
-
-    app.logger.info(f"Processing {len(attachments)} attachments.")
-    for i, attachment in enumerate(attachments):
-        content_type = attachment.get('ContentType', '')
-        filename = attachment.get('Name', '')
-        content = attachment.get('Content', '')
-
-        app.logger.debug(
-            f"Attachment {i + 1}: Name='{filename}', ContentType='{content_type}', HasContent={bool(content)}")
-
-        if not content_type.startswith('image/'):
-            app.logger.debug(
-                f"Attachment {i + 1} ('{filename}') is not an image (ContentType: {content_type}). Skipping.")
-            continue
-        if not filename or '.' not in filename:
-            app.logger.debug(f"Attachment {i + 1} ('{filename}') has no extension. Skipping.")
-            continue
-        file_extension = filename.split('.')[-1].lower()
-        if file_extension not in ALLOWED_IMAGE_EXTENSIONS:
-            app.logger.debug(
-                f"Attachment {i + 1} ('{filename}') has unsupported extension '{file_extension}'. Skipping.")
-            continue
-        try:
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Attempting to decode Base64 content.")
-            image_data = base64.b64decode(content)
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Decoded. Image data length: {len(image_data)} bytes.")
-
-            if len(image_data) > MAX_IMAGE_SIZE:
-                app.logger.warning(
-                    f"File {filename} is too large ({len(image_data)} bytes). MAX_IMAGE_SIZE is {MAX_IMAGE_SIZE}. Skipping.")
-                continue
-
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Extracting EXIF GPS data.")
-            lat, lng = extract_gps_coordinates(image_data)  # Assuming this function is defined in image_utils
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): EXIF GPS: lat={lat}, lng={lng}")
-
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): Uploading to GCS.")
-            image_url = upload_image_to_gcs(image_data, filename)
-            app.logger.debug(f"Attachment {i + 1} ('{filename}'): GCS URL: {image_url}")
-
-            if image_url:
-                app.logger.info(
-                    f"Attachment {i + 1} ('{filename}'): Successfully processed. Returning URL: {image_url}")
-                return image_url, lat, lng
-            else:
-                app.logger.warning(
-                    f"Attachment {i + 1} ('{filename}'): Failed to upload to GCS or get URL. Continuing to next attachment.")
-        except Exception as e:
-            app.logger.error(f"Error processing attachment {filename}: {e}", exc_info=True)
-            continue
-    app.logger.debug("Finished processing attachments loop.")
-    return None, None, None
-
-
 @app.route('/webhook/postmark', methods=['POST'])
 def postmark_webhook():
     token_from_query = request.args.get('token')
     app.logger.info(f"Postmark webhook called. Token from query: {token_from_query}")
-
     try:
-        data = request.get_json(force=True)  # Consider removing force=True and checking Content-Type
-        if not data:
+        request_json_data = request.get_json(force=True)
+        if not request_json_data:
             app.logger.warning(f"No JSON data received in Postmark webhook from {request.remote_addr}.")
             return jsonify({'status': 'error', 'message': 'No JSON data received'}), 200
     except Exception as e:
         app.logger.error(f"Error parsing JSON data in Postmark webhook: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': f'Error parsing request data: {str(e)}'}), 200
 
-    # Use the new improved webhook handler
-    result = webhook_handler.handle_postmark_webhook_request(
-        request_json_data=data,
+    result_dict = handle_postmark_webhook_request(
+        request_json_data=request_json_data,
         query_token=token_from_query,
-        app_logger=app.logger,
+        app_logger=current_app.logger,
         db_client=db,
         bucket=bucket,
         app_context=app.app_context(),
         inbound_url_token_config=INBOUND_URL_TOKEN,
         allowed_image_extensions_config=ALLOWED_IMAGE_EXTENSIONS,
         max_image_size_config=MAX_IMAGE_SIZE,
-        app_config=app_config
+        app_config=current_app.config  # Pass the app's config
     )
-
-    # Return response based on result
-    http_status_code = result.get('http_status_code', 200)
-    response_data = {
-        'status': result['status'],
-        'message': result['message']
-    }
-    
-    # Add additional fields if available
-    if 'contentIds' in result:
-        response_data['contentIds'] = result['contentIds']
-    if 'skipped_count' in result:
-        response_data['skipped_count'] = result['skipped_count']
-    
-    return jsonify(response_data), http_status_code
+    http_status_code = result_dict.pop('http_status_code', 200)
+    return jsonify(result_dict), http_status_code
 
 
-# --- ADMIN PANEL ---
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
         try:
-            admin_ref = db.collection('admins').where('email', '==', email).limit(1).get()
-            if not admin_ref:
-                return render_template('admin/login.html', error='Invalid email or password')
-            admin_doc = admin_ref[0]
-            admin_data = admin_doc.to_dict()
-            # IMPORTANT: Use hashed passwords in a real application!
-            if admin_data.get('password') != password:
-                return render_template('admin/login.html', error='Invalid email or password')
-            session['admin_id'] = admin_doc.id
-            session['admin_email'] = admin_data.get('email')
-            app.logger.info(f"Admin '{email}' logged in successfully.")
-            return redirect(url_for('admin_dashboard'))
+            data = request.get_json()
+            if not data or 'idToken' not in data:
+                current_app.logger.warning("/admin/login POST: Missing idToken in request.")
+                return jsonify({'status': 'error', 'message': 'Missing idToken'}), 400
+
+            id_token = data['idToken']
+            # Ensure verify_admin_id_token is imported from admin_services
+            admin_info = verify_admin_id_token(id_token, current_app.logger)
+
+            if admin_info:
+                session['admin_id'] = admin_info['uid']  # Changed to 'uid'
+                session['admin_email'] = admin_info['email']
+                current_app.logger.info(
+                    f"Admin '{admin_info['email']}' logged in successfully using ID token. UID: {admin_info['uid']}")
+                return jsonify({'status': 'success', 'message': 'Admin login successful',
+                                'redirect_url': url_for('admin_dashboard')}), 200
+            else:
+                current_app.logger.warning(f"/admin/login POST: Admin authentication failed for token.")
+                return jsonify({'status': 'error', 'message': 'Invalid credentials or not an admin'}), 401
         except Exception as e:
-            app.logger.error(f"Error during admin login for email {email}: {e}", exc_info=True)
-            return render_template('admin/login.html', error='An error occurred during login')
+            current_app.logger.error(f"Error in /admin/login POST: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': 'An unexpected error occurred'}), 500
+
+    # GET request part remains the same
     if 'admin_id' in session:
         return redirect(url_for('admin_dashboard'))
     return render_template('admin/login.html')
@@ -299,77 +218,100 @@ def admin_logout():
 def admin_dashboard():
     if 'admin_id' not in session:
         return redirect(url_for('admin_login'))
-    status_filter = request.args.get('status', 'for_moderation')
+
+    view_type = request.args.get('view')
+    status_filter_from_query = request.args.get('status', 'for_moderation')  # Original status filter
+
     try:
-        items_query = db.collection('contentItems')
-        if status_filter != 'all':
-            items_query = items_query.where('status', '==', status_filter)
-        items_query = items_query.order_by('timestamp', direction=firestore.Query.DESCENDING)
-        items_docs = items_query.get()
-        items = []
-        for doc in items_docs:
-            item_data = doc.to_dict()
-            item_data['itemId'] = doc.id
-            if status_filter == 'for_moderation' or status_filter == 'all':  # Simplified condition
-                reports_ref = db.collection('reports').where('contentId', '==',
-                                                             doc.id).get()  # Assuming 'reports' collection
-                item_data['reports'] = [report.to_dict() for report in reports_ref]
-            status_map = {'published': 'Published', 'for_moderation': 'For Moderation', 'rejected': 'Rejected'}
-            item_data['status_display'] = status_map.get(item_data.get('status'), item_data.get('status'))
-            items.append(item_data)
+        # Pass view_type to the service. status_filter_from_query might be ignored by the service if view_type is 'reported'.
+        items = get_dashboard_items(status_filter_from_query, current_app.logger, view_type=view_type)
+
+        status_map = {'published': 'Published', 'for_moderation': 'For Moderation', 'rejected': 'Rejected'}
+        for item in items:
+            item['status_display'] = status_map.get(item.get('status'), item.get('status'))
+
         section_titles = {
-            'all': 'All Posts', 'for_moderation': 'Posts for Moderation',
-            'published': 'Published Posts', 'rejected': 'Rejected Posts'
+            'all': 'All Posts',
+            'for_moderation': 'Posts for Moderation',
+            'published': 'Published Posts',
+            'rejected': 'Rejected Posts',
+            'reported': 'Reported Posts'  # New title
         }
+
+        active_filter_name_for_title = None
+        status_for_dropdown = status_filter_from_query
+
+        if view_type == 'reported':
+            active_filter_name_for_title = 'reported'
+            # When viewing reported posts, the status dropdown could default to 'all',
+            # as the primary filter is 'reportedCount > 0' and items can be of any status.
+            status_for_dropdown = 'all'
+        else:
+            active_filter_name_for_title = status_filter_from_query
+
+        current_section_title = section_titles.get(active_filter_name_for_title, 'Posts')
+
         return render_template('admin/dashboard.html',
-                               items=items, status=status_filter,
-                               section_title=section_titles.get(status_filter, 'Posts'),
-                               admin_email=session.get('admin_email'))
+                               items=items,
+                               status=status_for_dropdown,  # Used to set selected option in dropdown
+                               section_title=current_section_title,
+                               admin_email=session.get('admin_email'),
+                               current_view=view_type,  # Pass current_view for sidebar active state
+                               active_status_filter=status_filter_from_query  # Pass original status for sidebar
+                               )
     except Exception as e:
-        app.logger.error(f"Error loading admin dashboard (status: {status_filter}): {e}", exc_info=True)
-        return render_template('500.html'), 500  # Assuming you have a 500.html template
+        error_desc = f"status: {status_filter_from_query}, view: {view_type}"
+        app.logger.error(f"Error loading admin dashboard ({error_desc}): {e}", exc_info=True)
+        return render_template('500.html'), 500
 
 
 @app.route('/admin/api/content/<content_id>/approve', methods=['POST'])
 def admin_approve_content(content_id):
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-    try:
-        content_ref = db.collection('contentItems').document(content_id)
-        content_ref.update({
-            'status': 'published',
-            'moderated_by': session.get('admin_id'),
-            'moderated_at': firestore.SERVER_TIMESTAMP
-        })
-        app.logger.info(f"Admin '{session.get('admin_email')}' approved content ID: {content_id}")
+    success = approve_content(content_id, session.get('admin_id'), current_app.logger)
+    if success:
         return jsonify({'status': 'success', 'message': 'Post approved'})
-    except Exception as e:
-        app.logger.error(f"Error approving post {content_id} by admin '{session.get('admin_email')}': {e}",
-                         exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to approve post'}), 500
 
 
 @app.route('/admin/api/content/<content_id>/reject', methods=['POST'])
 def admin_reject_content(content_id):
     if 'admin_id' not in session:
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-    try:
-        content_ref = db.collection('contentItems').document(content_id)
-        content_ref.update({
-            'status': 'rejected',
-            'moderated_by': session.get('admin_id'),
-            'moderated_at': firestore.SERVER_TIMESTAMP
-        })
-        app.logger.info(f"Admin '{session.get('admin_email')}' rejected content ID: {content_id}")
+    success = reject_content(content_id, session.get('admin_id'), current_app.logger)
+    if success:
         return jsonify({'status': 'success', 'message': 'Post rejected'})
-    except Exception as e:
-        app.logger.error(f"Error rejecting post {content_id} by admin '{session.get('admin_email')}': {e}",
-                         exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to reject post'}), 500
+
+
+@app.route('/admin/api/content/<content_id>/delete', methods=['POST'])
+def admin_delete_content(content_id):
+    if 'admin_id' not in session:
+        current_app.logger.warning(f"Unauthorized attempt to delete content {content_id}. No admin in session.")
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+
+    admin_id = session.get('admin_id')
+    current_app.logger.info(f"Admin {admin_id} attempting to delete content {content_id} via API.")
+
+    # Call the service function for deletion
+    result = delete_content_admin(content_id, admin_id, current_app.logger)
+
+    if result.get('status') == 'success':
+        current_app.logger.info(f"Content {content_id} successfully deleted by admin {admin_id}.")
+        return jsonify({'status': 'success', 'message': result.get('message', 'Post deleted successfully')})
+    else:
+        current_app.logger.error(
+            f"Failed to delete content {content_id} by admin {admin_id}. API Error: {result.get('message')}")
+        # Propagate the status code from the service if available, otherwise default to 500
+        status_code = result.get('code', 500)
+        return jsonify({'status': 'error', 'message': result.get('message', 'Failed to delete post')}), status_code
 
 
 @app.template_filter('datetime')
-def format_datetime_filter(timestamp):  # Renamed to avoid conflict with datetime module
+def format_datetime_filter(timestamp):
     if not timestamp: return ''
     if isinstance(timestamp, dict):
         if '_seconds' in timestamp:
@@ -382,27 +324,38 @@ def format_datetime_filter(timestamp):  # Renamed to avoid conflict with datetim
 
 @app.route('/')
 def home():
-    items_for_map = []
-    try:
-        items_query = db.collection('contentItems') \
-            .where('status', '==', 'published') \
-            .order_by('voteCount', direction=firestore.Query.ASCENDING) \
-            .order_by('timestamp', direction=firestore.Query.DESCENDING) \
-            .stream()
-        for item_doc in items_query:
-            item_data = item_doc.to_dict()
-            item_data['itemId'] = item_doc.id
-            if 'latitude' in item_data and 'longitude' in item_data:
-                items_for_map.append(item_data)
-            else:
-                app.logger.debug(f"Item {item_doc.id} skipped for map, missing coordinates.")
-        app.logger.debug(f"Loaded {len(items_for_map)} items from Firestore for the map.")
-    except Exception as e:
-        app.logger.error(f"Error loading data from Firestore for the map: {e}", exc_info=True)
-    return render_template('index.html', items=items_for_map, maps_api_key=GOOGLE_MAPS_API_KEY)
+    # Получаем userId из URL-параметра
+    filtered_user_id = request.args.get('userId', None)
+    current_logged_in_user_id = session.get('user_id')
+
+    # Подготавливаем контекст с отфильтрованными данными
+    context = get_home_page_data(current_app.logger, GOOGLE_MAPS_API_KEY,
+                                 user_id_for_filtering=filtered_user_id,
+                                 logged_in_user_id=current_logged_in_user_id,
+                                 photo_upload_limit=current_app.config['PHOTO_UPLOAD_LIMIT'])
+
+    app.logger.debug(f"Home page: Loaded {len(context.get('items', []))} items for map" +
+                     (f" filtered by user {filtered_user_id}" if filtered_user_id else ""))
+
+    # Pass user session info and filter info to the template
+    context['user_id_session'] = session.get('user_id')
+    context['user_displayName_session'] = session.get('user_displayName')
+    context['filtered_user_id'] = filtered_user_id  # Для отображения активного фильтра
+
+    return render_template('index.html', **context)
 
 
-# --- API for interacting with posts ---
+@app.route('/help')
+def help_page():
+    POSTMARK_FROM_EMAIL = os.environ.get('POSTMARK_FROM_EMAIL', 'default_email@example.com')
+    base_url_from_env = os.environ.get('BASE_URL', 'https://mailmap.store')
+    if not base_url_from_env.startswith(('http://', 'https://')):
+        base_url_to_template = 'https://' + base_url_from_env
+    else:
+        base_url_to_template = base_url_from_env
+    return render_template('help_page.html', postmark_from_email=POSTMARK_FROM_EMAIL, base_url=base_url_to_template)
+
+
 @app.route('/api/content/<content_id>/vote', methods=['POST'])
 def vote_content(content_id):
     app.logger.info(f"Vote request for content_id: {content_id}")
@@ -412,50 +365,17 @@ def vote_content(content_id):
             app.logger.warning(f"Missing 'vote' parameter for content_id: {content_id}. Data: {data}")
             return jsonify({'status': 'error', 'message': 'Missing vote parameter'}), 400
         vote_value = data.get('vote')
-        user_id = data.get('userId') or request.headers.get('X-User-ID')  # Consider a more robust user ID system
-        if not user_id:
-            app.logger.warning(f"Missing 'userId' for voting on content_id: {content_id}.")
-            return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
-        if vote_value not in [1, -1]:
-            app.logger.warning(f"Invalid 'vote' value: {vote_value} for content_id: {content_id}.")
-            return jsonify({'status': 'error', 'message': 'Invalid vote value'}), 400
-
-        doc_ref = db.collection('contentItems').document(content_id)
-        doc = doc_ref.get()
-        if not doc.exists:
-            app.logger.warning(f"Content not found for voting: {content_id}")
-            return jsonify({'status': 'error', 'message': 'Content not found'}), 404
-
-        doc_data = doc.to_dict()
-        if doc_data.get('status') == 'for_moderation':
-            app.logger.info(f"Attempt to vote on content under moderation: {content_id}")
-            return jsonify({'status': 'error', 'message': 'Cannot vote for content under moderation'}), 403
-
-        voters = doc_data.get('voters', {})
-        vote_adjustment = vote_value  # Simplified logic, assumes new vote or overwrites
-        if user_id in voters and voters[user_id] == vote_value:
-            app.logger.info(f"User {user_id} already voted this way for {content_id}.")
-            return jsonify({'status': 'error', 'message': 'You have already voted this way',
-                            'newVoteCount': doc_data.get('voteCount', 0)}), 200
-
-        current_votes = doc_data.get('voteCount', 0)
-        # More robust vote change logic might be needed if users can change from +1 to -1 etc.
-        # This simple adjustment assumes a new vote or a direct change.
-        if user_id in voters:  # User is changing vote
-            previous_vote_val = voters[user_id]
-            new_vote_count = current_votes - previous_vote_val + vote_value
-        else:  # New vote
-            new_vote_count = current_votes + vote_value
-
-        voters_update = {f'voters.{user_id}': vote_value}
-        vote_history = {'userId': user_id, 'value': vote_value, 'timestamp': datetime.utcnow(), 'isAnonymous': True}
-        doc_ref.update(
-            {'voteCount': new_vote_count, **voters_update, 'voteHistory': firestore.ArrayUnion([vote_history])})
-        app.logger.info(f"Vote recorded for {content_id} by user {user_id}. New count: {new_vote_count}")
-        return jsonify({'status': 'success', 'message': 'Vote recorded', 'newVoteCount': new_vote_count})
+        user_id = data.get('userId') or request.headers.get('X-User-ID')
+        data = {
+            'vote': vote_value,
+            'timestamp': SERVER_TIMESTAMP
+        }
+        result = process_content_vote(content_id, user_id, vote_value, current_app.logger)
+        http_status_code = result.pop('http_code', 500 if result.get('status') == 'error' else 200)
+        return jsonify(result), http_status_code
     except Exception as e:
-        app.logger.error(f"Error voting for content {content_id}: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        app.logger.error(f"Unexpected error in /api/content/.../vote route for {content_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': "An unexpected error occurred."}), 500
 
 
 @app.route('/api/content/<content_id>/report', methods=['POST'])
@@ -465,153 +385,379 @@ def report_content(content_id):
         data = request.get_json()
         reason = data.get('reason', 'Not specified')
         user_id = data.get('userId') or request.headers.get('X-User-ID')
-        if not user_id:
-            app.logger.warning(f"Missing 'userId' for reporting content_id: {content_id}.")
-            return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
-
-        doc_ref = db.collection('contentItems').document(content_id)
-        doc = doc_ref.get()
-        if not doc.exists:
-            app.logger.warning(f"Content not found for reporting: {content_id}")
-            return jsonify({'status': 'error', 'message': 'Content not found'}), 404
-
-        doc_data = doc.to_dict()
-        if doc_data.get('status') == 'for_moderation':
-            app.logger.info(f"Attempt to report content already under moderation: {content_id}")
-            return jsonify({'status': 'error', 'message': 'This content is already under moderation'}), 403
-
-        reporters = doc_data.get('reporters', [])  # Assuming 'reporters' is a list of user IDs
-        if user_id in reporters:
-            app.logger.info(f"User {user_id} already reported content {content_id}.")
-            return jsonify({'status': 'error', 'message': 'You have already reported this content'}), 200
-
-        current_reports_count = doc_data.get('reportedCount', 0)
-        report_data = {'reason': reason, 'timestamp': datetime.utcnow(), 'userId': user_id, 'isAnonymous': True}
-
-        update_payload = {
-            'reportedCount': current_reports_count + 1,
-            'reports': firestore.ArrayUnion([report_data]),  # Assuming 'reports' is an array of report objects
-            'reporters': firestore.ArrayUnion([user_id])
-        }
-
-        if update_payload['reportedCount'] >= 3 and doc_data.get('status') == 'published':
-            app.logger.info(
-                f"Content {content_id} reached {update_payload['reportedCount']} reports, changing status to for_moderation")
-            update_payload['status'] = 'for_moderation'
-            update_payload[
-                'moderation_note'] = f'Automatically sent for moderation ({update_payload["reportedCount"]} reports)'
-            update_payload['moderation_timestamp'] = datetime.utcnow()
-
-        doc_ref.update(update_payload)
-        app.logger.info(f"Report submitted for {content_id} by user {user_id}.")
-        return jsonify({'status': 'success', 'message': 'Report submitted'})
+        result = process_content_report(content_id, user_id, reason, current_app.logger)
+        http_status_code = result.pop('http_code', 500 if result.get('status') == 'error' else 200)
+        return jsonify(result), http_status_code
     except Exception as e:
-        app.logger.error(f"Error submitting report for content {content_id}: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        app.logger.error(f"Unexpected error in /api/content/.../report route for {content_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': "An unexpected error occurred."}), 500
 
 
 @app.route('/api/content/create', methods=['POST'])
 def create_content():
     app.logger.info("Received request to /api/content/create")
     try:
-        text = request.form.get('text', '')
-        try:
-            latitude = float(request.form.get('latitude'))
-            longitude = float(request.form.get('longitude'))
-        except (TypeError, ValueError):
-            app.logger.warning("Invalid or missing coordinates for content creation.")
-            return jsonify(
-                {'status': 'error', 'message': 'Latitude and longitude are required and must be numbers.'}), 400
-
         user_id = request.form.get('userId') or request.headers.get('X-User-ID')
-        if not user_id:
-            app.logger.warning("User ID missing for content creation.")
-            return jsonify({'status': 'error', 'message': 'User ID is required'}), 400
-
-        image_url = None
-        if 'image' in request.files:
-            image = request.files['image']
-            if image and image.filename != '':
-                filename = secure_filename(image.filename)
-                file_extension = os.path.splitext(filename)[1].lower()
-                if file_extension.lstrip('.') not in ALLOWED_IMAGE_EXTENSIONS:
-                    app.logger.warning(f"Unsupported image type uploaded: {filename}")
-                    return jsonify({'status': 'error', 'message': 'Unsupported image type.'}), 400
-
-                image_data = image.read()  # Read image data
-                if len(image_data) > MAX_IMAGE_SIZE:  # Check size before temp file
-                    app.logger.warning(f"Uploaded image {filename} too large: {len(image_data)} bytes.")
-                    return jsonify({'status': 'error',
-                                    'message': f'Image size exceeds limit of {MAX_IMAGE_SIZE // (1024 * 1024)}MB.'}), 400
-
-                # Re-assign unique_filename to avoid using original potentially unsafe filename in GCS path
-                unique_gcs_filename = f"content_images/{str(uuid.uuid4())}{file_extension}"
-
-                # Uploading image_data (bytes) directly
-                blob = bucket.blob(unique_gcs_filename)
-                blob.upload_from_string(image_data, content_type=image.content_type)
-                blob.make_public()
-                image_url = blob.public_url
-            else:
-                app.logger.info("Image file provided but filename is empty or file is not valid.")
-
-        new_content = {
-            'text': text, 'imageUrl': image_url, 'latitude': latitude, 'longitude': longitude,
-            'timestamp': datetime.utcnow(), 'userId': user_id, 'isAnonymous': True,
-            # Consider if API posts should be anonymous
-            'voteCount': 0, 'reportedCount': 0, 'status': 'published'
-        }
-        doc_ref = db.collection('contentItems').document()
-        doc_ref.set(new_content)
-        doc_ref.update({'itemId': doc_ref.id})  # Add itemId to the document
-        app.logger.info(f"Content created successfully via API by user {user_id}. Content ID: {doc_ref.id}")
-        return jsonify(dict(status='success', message='Content created successfully', contentId=doc_ref.id))
+        result = create_new_content_from_api(
+            form_data=request.form,
+            files=request.files,
+            user_id=user_id,
+            app_logger=current_app.logger,
+            bucket_client=bucket,
+            allowed_extensions=ALLOWED_IMAGE_EXTENSIONS,
+            max_image_size=MAX_IMAGE_SIZE
+        )
+        http_status_code = result.pop('http_code', 500 if result.get('status') == 'error' else 200)
+        if http_status_code == 201 and 'contentId' not in result:
+            app.logger.error("API create content: service returned success but no contentId.")
+            return jsonify({'status': 'error', 'message': 'Content creation succeeded but contentId missing.'}), 500
+        return jsonify(result), http_status_code
     except Exception as e:
-        app.logger.error(f"Error creating content via API: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        app.logger.error(f"Unexpected error in /api/content/create route: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': "An unexpected error occurred."}), 500
+
+
+@app.route('/api/content/<content_id>/delete', methods=['DELETE'])
+def api_delete_content(content_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        current_app.logger.warning(f"Unauthorized attempt to delete content {content_id}. No user in session.")
+        return jsonify({'status': 'error', 'message': 'User not authenticated'}), 401
+
+    current_app.logger.info(f"User {user_id} attempting to delete content {content_id}.")
+
+    result = delete_content_item(content_id, user_id, current_app.logger)
+
+    current_app.logger.info(
+        f"Deletion attempt for content {content_id} by user {user_id}. Result: {result.get('message')}, Code: {result.get('code')}")
+
+    return jsonify(result), result.get('code', 500)
+
+
+@app.route('/api/content/<content_id>/edit', methods=['PUT'])
+def api_edit_content(content_id):
+    user_id = request.headers.get('X-User-ID')
+    if not user_id:
+        current_app.logger.warning(f"Edit attempt for content {content_id} without X-User-ID.")
+        return jsonify({'status': 'error', 'message': 'User authentication required (X-User-ID header missing).'}), 401
+
+    try:
+        data = request.get_json()
+        if not data:
+            current_app.logger.warning(f"Edit attempt for content {content_id} by user {user_id} with no JSON data.")
+            return jsonify({'status': 'error', 'message': 'No data provided for update.'}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error parsing JSON for content {content_id} edit by user {user_id}: {e}",
+                                 exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Invalid JSON format.'}), 400
+
+    current_app.logger.info(f"User {user_id} attempting to edit content {content_id} with data: {data}")
+
+    # Call the placeholder service function
+    # Note: MAX_IMAGE_SIZE is used as MAX_IMAGE_SIZE_BYTES is not explicitly defined in app.config
+    result = api_update_content_item(
+        content_id=content_id,
+        user_id=user_id,
+        data=data,
+        app_logger=current_app.logger,
+        gcs_bucket_name=current_app.config.get('FIREBASE_STORAGE_BUCKET'),  # Corrected bucket name
+        allowed_extensions=current_app.config.get('ALLOWED_IMAGE_EXTENSIONS'),
+        max_image_size_bytes=current_app.config.get('MAX_IMAGE_SIZE')
+    )
+
+    http_status_code = result.pop('http_code', 500 if result.get('status') == 'error' else 200)
+    return jsonify(result), http_status_code
+
+
+@app.route('/api/content/<content_id>', methods=['GET'])
+def get_api_content_item(content_id):
+    current_app.logger.info(f"Request to fetch content item with ID: {content_id}")
+    try:
+        item_data = firestore_utils.get_content_item(content_id, current_app.logger)
+
+        if item_data:
+            # The 'itemId' is already part of item_data as returned by get_content_item
+            current_app.logger.info(f"Content item {content_id} found.")
+            # Optionally, remove sensitive data or reformat before sending
+            # For now, sending all data as is.
+            return jsonify({'status': 'success', 'content': item_data}), 200
+        else:
+            current_app.logger.warning(f"Content item {content_id} not found when fetching via API.")
+            return jsonify({'status': 'error', 'message': 'Content not found'}), 404
+    except Exception as e:
+        current_app.logger.error(f"Error fetching content item {content_id} via API: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'An internal server error occurred'}), 500
 
 
 @app.route('/post/<item_id>')
 def post_view(item_id):
-    items_for_map = []
-    try:
-        items_query = db.collection('contentItems') \
-            .where('status', '==', 'published') \
-            .order_by('voteCount', direction=firestore.Query.ASCENDING) \
-            .order_by('timestamp', direction=firestore.Query.DESCENDING) \
-            .stream()
-        for item_doc in items_query:
-            item_data = item_doc.to_dict()
-            item_data['itemId'] = item_doc.id
-            if 'latitude' in item_data and 'longitude' in item_data:
-                items_for_map.append(item_data)
-    except Exception as e:
-        app.logger.error(f"Error loading map items for post_view: {e}", exc_info=True)
+    # Получаем userId из URL-параметра
+    filtered_user_id = request.args.get('userId', None)
 
-    target_item_data = None
+    # Подготавливаем контекст с отфильтрованными данными и целевым элементом
+    context = get_post_page_data(item_id, current_app.logger, GOOGLE_MAPS_API_KEY,
+                                 user_id_for_filtering=filtered_user_id)
+
+    # Добавляем информацию о текущей сессии
+    context['user_id_session'] = session.get('user_id')
+    context['user_displayName_session'] = session.get('user_displayName')
+    context['filtered_user_id'] = filtered_user_id  # Для отображения активного фильтра
+
+    app.logger.debug(f"Post page {item_id}: Loaded {len(context.get('items', []))} items for map" +
+                     (f" filtered by user {filtered_user_id}" if filtered_user_id else ""))
+
+    if not context.get('target_item_data'):
+        app.logger.warning(f"Post page: Target item {item_id} not found.")
+
+    return render_template('index.html', **context)
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        displayName = request.form.get('displayName')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        error = None
+
+        if password != confirm_password:
+            error = "Passwords do not match."
+
+        if not error:
+            user_service = UserService(current_app.logger)
+            registration_result = user_service.register_user_with_email_password(email, displayName, password)
+
+            if registration_result['status'] == 'success':
+                current_app.logger.info(
+                    f"User {registration_result['user']['uid']} ({email}) registered successfully via UserService. Message: {registration_result.get('message')}")
+                # Flash message based on the outcome of sending the verification email
+                message_from_service = registration_result.get('message', '')
+                if 'Please check your email to verify your account' in message_from_service:
+                    flash('Registration successful. Please check your email to verify your account.', 'success')
+                elif 'Failed to send verification email' in message_from_service:
+                    flash(
+                        'Registration successful. Failed to send verification email; please try requesting a new one later or contact support.',
+                        'warning')
+                elif 'An error occurred while sending the verification email' in message_from_service:
+                    flash(
+                        'Registration successful. An error occurred while attempting to send the verification email. Please try verifying later or contact support.',
+                        'warning')
+                else:
+                    # Default success message if the specific verification message isn't found
+                    flash('Registration successful. Please log in.', 'success')
+
+                return redirect(url_for('login'))  # Redirect to login page after successful registration
+            else:
+                error = registration_result.get('message', 'An unknown error occurred during registration.')
+                current_app.logger.warning(f"Registration failed for {email}: {error}")
+
+        # If error is set either by initial checks or by UserService response
+        if error:
+            return render_template('register.html', error=error, email=email, displayName=displayName)
+
+    return render_template('register.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])  # Now handles GET and POST
+def login():
+    if request.method == 'GET':
+        if session.get('user_id'):
+            return redirect(url_for('home'))
+        return render_template('login.html')
+
+    # POST request logic
+    # The initial `if session.get('user_id'):` check that returned JSON is removed.
+    # If a POST request comes, we attempt to log in with the token.
     try:
-        doc_ref = db.collection('contentItems').document(item_id)
-        doc = doc_ref.get()
-        if doc.exists:
-            target_item_data = doc.to_dict()
-            target_item_data['itemId'] = item_id
+        data = request.get_json()
+        if not data or 'idToken' not in data:
+            current_app.logger.warning("/login POST: Missing idToken in request.")
+            return jsonify({'status': 'error', 'message': 'Missing idToken'}), 400
+
+        id_token = data['idToken']
+
+        user_service = UserService(current_app.logger)
+        # Call the renamed method login_user_with_id_token
+        login_response = user_service.login_user_with_id_token(id_token)
+
+        if login_response['status'] == 'success':
+            user_data = login_response['user']
+            session['user_id'] = user_data['uid']
+            session['user_email'] = user_data['email']
+            session['user_displayName'] = user_data.get('displayName', user_data.get('email'))  # Fallback to email
+
+            current_app.logger.info(f"User {user_data['uid']} ({user_data['email']}) logged in via ID token (POST).")
+            return jsonify({'status': 'success', 'message': 'Login successful', 'redirect_url': url_for('home')}), 200
         else:
-            app.logger.warning(f"Target item {item_id} not found for post_view.")
-            # Optionally, return a 404 page here:
-            # return render_template('404.html'), 404
-    except Exception as e:
-        app.logger.error(f"Error retrieving target item {item_id} for post_view: {e}", exc_info=True)
+            # Log the specific error message from the service
+            error_message = login_response.get('message', 'Login failed. Invalid token or user issue.')
+            current_app.logger.warning(
+                f"Login failed for token (POST). Service message: {error_message}")  # Avoid logging token itself
+            return jsonify({'status': 'error', 'message': error_message}), 401
 
-    return render_template(
-        'index.html',
-        items=items_for_map,
-        target_item_id=item_id,
-        target_item_data=target_item_data,
-        maps_api_key=GOOGLE_MAPS_API_KEY
-    )
+    except Exception as e:
+        # General exception handling for unexpected errors
+        current_app.logger.error(f"Unexpected error in /login POST route: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'An unexpected error occurred during login.'}), 500
+
+
+@app.route('/logout')
+def logout():
+    user_email = session.get('user_email', 'Unknown user')  # For logging
+    session.pop('user_id', None)
+    session.pop('user_email', None)
+    session.pop('user_displayName', None)
+    current_app.logger.info(f"User '{user_email}' logged out from server session.")
+    # Перенаправляем на домашнюю страницу
+    return redirect(url_for('home'))
+
+
+@app.route('/client_logout')
+def client_logout_page():
+    return render_template('client_logout.html')
+
+
+@app.route('/google_login', methods=['GET'])
+def google_login():
+    # This route is a placeholder.
+    # Actual Google Sign-In is initiated client-side.
+    # Client obtains an ID token and sends it to /google_callback.
+    # Redirecting to home or login page, or showing a message.
+    current_app.logger.info("Accessed /google_login placeholder route. Redirecting to home.")
+    return redirect(url_for('home'))
+
+
+@app.route('/google_callback', methods=['POST'])
+def google_callback():
+    current_app.logger.info("Attempting Google Sign-In via /google_callback.")
+    try:
+        data = request.get_json()
+        if not data or 'idToken' not in data:
+            current_app.logger.warning("/google_callback: Missing idToken in request.")
+            return jsonify({'status': 'error', 'message': 'Missing idToken'}), 400
+
+        id_token = data['idToken']
+
+        user_service = UserService(current_app.logger)
+        google_signin_response = user_service.handle_google_signin(id_token)
+
+        if google_signin_response['status'] == 'success':
+            user_data = google_signin_response['user']
+            session['user_id'] = user_data['uid']
+            session['user_email'] = user_data['email']
+            session['user_displayName'] = user_data.get('displayName', user_data.get('email'))  # Fallback to email
+
+            current_app.logger.info(f"User {user_data['uid']} ({user_data['email']}) processed via Google Sign-In.")
+            return jsonify(
+                {'status': 'success', 'message': 'Google Sign-In successful', 'redirect_url': url_for('home')}), 200
+        else:
+            error_message = google_signin_response.get('message', 'Google Sign-In failed.')
+            # Specific errors like InvalidIdTokenError are now handled within UserService,
+            # so we check the message for more context if needed.
+            if "Invalid ID token" in error_message:
+                status_code = 401
+            elif "User creation failed" in error_message or "Account merge failed" in error_message:
+                status_code = 500
+            else:
+                status_code = 401  # Default to 401 for other auth-related issues
+
+            current_app.logger.warning(f"Google Sign-In failed. Service message: {error_message}")
+            return jsonify({'status': 'error', 'message': error_message}), status_code
+
+    # Removed specific Firebase exception handling (ExpiredIdTokenError, InvalidIdTokenError)
+    # as these are now caught within user_service.handle_google_signin and returned as error statuses.
+    except Exception as e:
+        # General exception handling for unexpected errors during request processing in the route itself
+        current_app.logger.error(f"Unexpected error in /google_callback route: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'An unexpected error occurred during Google Sign-In.'}), 500
+
+
+@app.route('/apple_callback', methods=['POST'])
+def apple_callback():
+    current_app.logger.info("Attempting Apple Sign-In via /apple_callback.")
+    try:
+        data = request.get_json()
+        if not data or 'idToken' not in data:
+            current_app.logger.warning("/apple_callback: Missing idToken in request.")
+            return jsonify({'status': 'error', 'message': 'Missing idToken'}), 400
+
+        id_token = data['idToken']
+
+        user_service = UserService(current_app.logger)
+        # This method will be created in user_service.py
+        apple_signin_response = user_service.handle_apple_signin(id_token)
+
+        if apple_signin_response['status'] == 'success':
+            user_data = apple_signin_response['user']
+            session['user_id'] = user_data['uid']
+            session['user_email'] = user_data['email']
+            # Apple might not always provide a display name, fallback to email or a placeholder
+            session['user_displayName'] = user_data.get('displayName', user_data.get('email', 'User'))
+
+            current_app.logger.info(f"User {user_data['uid']} ({user_data['email']}) processed via Apple Sign-In.")
+            return jsonify({
+                'status': 'success',
+                'message': 'Apple Sign-In successful',
+                'redirect_url': url_for('home')
+            }), 200
+        else:
+            error_message = apple_signin_response.get('message', 'Apple Sign-In failed.')
+            status_code = apple_signin_response.get('status_code', 401)  # Get status_code from service or default
+
+            current_app.logger.warning(f"Apple Sign-In failed. Service message: {error_message}")
+            return jsonify({'status': 'error', 'message': error_message}), status_code
+
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in /apple_callback route: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'An unexpected error occurred during Apple Sign-In.'}), 500
+
+
+@app.route('/auth/action', methods=['GET'])
+def handle_auth_action():
+    """
+    Handles actions like email verification or password reset redirects from Firebase.
+    Flashes a message to the user and redirects them to the login page.
+    """
+    mode = request.args.get('mode')
+    action_code = request.args.get('oobCode')  # Out Of Band code
+    # continue_url = request.args.get('continueUrl') # Optional, not used in this simple handler
+    # lang = request.args.get('lang', 'en') # Optional
+
+    current_app.logger.info(
+        f"Auth action called with mode: {mode}, oobCode: {'present' if action_code else 'missing'}.")
+
+    # Here you could potentially verify the oobCode with Firebase Admin SDK
+    # auth.verify_password_reset_code(action_code) or similar for email verification if needed,
+    # but often Firebase handles the code verification itself before redirecting to this link.
+    # This handler primarily acts as a user-friendly landing page.
+
+    if mode == 'verifyEmail':
+        # Potentially, you could call auth.apply_action_code(action_code) here if not done by Firebase.
+        # However, the link from Firebase usually completes the action, then redirects.
+        # So, we just confirm to the user.
+        flash('Your email has been successfully verified! You can now log in.', 'success')
+        current_app.logger.info(
+            f"Email verification action completed for user (oobCode: {'present' if action_code else 'N/A'}).")
+    elif mode == 'resetPassword':
+        # For password reset, Firebase handles the reset page. This is if it redirects back to our app.
+        # Typically, you'd guide the user to a page to enter a new password if this link was for that.
+        # But if Firebase handles the password entry and this is just a confirmation redirect:
+        flash('Password reset successful. You can now log in with your new password.', 'success')
+        current_app.logger.info(f"Password reset action completed (oobCode: {'present' if action_code else 'N/A'}).")
+    elif mode == 'recoverEmail':
+        flash('Your email has been recovered. Please check your inbox for further instructions or try logging in.',
+              'info')
+        current_app.logger.info(f"Email recovery action processed (oobCode: {'present' if action_code else 'N/A'}).")
+    else:
+        # Generic message for other actions or if mode is unknown
+        flash('The requested action has been completed.', 'info')
+        current_app.logger.info(f"Unknown or generic auth action completed with mode: {mode}.")
+
+    return redirect(url_for('login'))
 
 
 if __name__ == '__main__':
-    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":  # To prevent show_server_urls from running twice with reloader
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         show_server_urls()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)

@@ -3,3 +3,6 @@
 /serviceAccountKey.json
 /.idea/
 /app.log
+/__pycache__/
+/tests/__pycache__/
+/tests/app.log

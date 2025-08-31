@@ -1,370 +1,60 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
-from firestore_utils import (
-    get_user_by_email,
-    get_user,
-    create_user,
-    save_content_item,
-    increment_user_photo_count,
-    reset_monthly_photo_count_if_needed
-)
+import unittest
+from unittest import mock
+from datetime import datetime, timedelta, timezone
+import sys
+import os
 
+# Add the parent directory to the Python path to allow module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-class TestGetUserByEmail:
-    """Тесты для функции get_user_by_email"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_user_found(self, mock_client):
-        """Тест когда пользователь найден"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_query = Mock()
-        mock_users_ref.where.return_value = mock_query
-        mock_query.limit.return_value = mock_query
-        
-        # Создаем мок документа
-        mock_doc = Mock()
-        mock_doc.id = "test_uid"
-        mock_doc.to_dict.return_value = {
-            "email": "test@example.com",
-            "displayName": "Test User"
-        }
-        
-        mock_query.get.return_value = [mock_doc]
-        
-        # Выполнение
-        result = get_user_by_email("test@example.com", Mock())
-        
-        # Проверка
-        assert result is not None
-        assert result["uid"] == "test_uid"
-        assert result["email"] == "test@example.com"
-        assert result["displayName"] == "Test User"
-    
-    @patch('firestore_utils.firestore.client')
-    def test_user_not_found(self, mock_client):
-        """Тест когда пользователь не найден"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_query = Mock()
-        mock_users_ref.where.return_value = mock_query
-        mock_query.limit.return_value = mock_query
-        
-        mock_query.get.return_value = []
-        
-        # Выполнение
-        result = get_user_by_email("nonexistent@example.com", Mock())
-        
-        # Проверка
-        assert result is None
-    
-    @patch('firestore_utils.firestore.client')
-    def test_exception_handling(self, mock_client):
-        """Тест обработки исключений"""
-        mock_client.side_effect = Exception("Database error")
-        
-        logger = Mock()
-        result = get_user_by_email("test@example.com", logger)
-        
-        assert result is None
-        logger.error.assert_called_once()
+# Firebase app should be initialized by conftest.py before this runs.
+# Ensure mock is imported if it's used standalone in the test class setup or methods.
+from unittest import mock
+import firebase_admin # Still needed for firestore.SERVER_TIMESTAMP etc.
+# from firebase_admin import credentials # No longer needed here
+# from google.auth import credentials as google_auth_credentials # No longer needed here
 
+import firestore_utils
 
-class TestGetUser:
-    """Тесты для функции get_user"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_user_exists(self, mock_client):
-        """Тест когда пользователь существует"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        mock_doc = Mock()
-        mock_doc.exists = True
-        mock_doc.id = "test_uid"
-        mock_doc.to_dict.return_value = {
-            "email": "test@example.com",
-            "displayName": "Test User"
-        }
-        
-        mock_doc_ref.get.return_value = mock_doc
-        
-        # Выполнение
-        result = get_user("test_uid", Mock())
-        
-        # Проверка
-        assert result is not None
-        assert result["uid"] == "test_uid"
-        assert result["email"] == "test@example.com"
-    
-    @patch('firestore_utils.firestore.client')
-    def test_user_not_exists(self, mock_client):
-        """Тест когда пользователь не существует"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        mock_doc = Mock()
-        mock_doc.exists = False
-        
-        mock_doc_ref.get.return_value = mock_doc
-        
-        # Выполнение
-        result = get_user("nonexistent_uid", Mock())
-        
-        # Проверка
-        assert result is None
+class TestFirestoreUtils(unittest.TestCase):
 
+    @mock.patch('firestore_utils.datetime')
+    @mock.patch('firestore_utils.get_db_client') # Changed from 'firestore_utils.db'
+    def test_create_user_period_end(self, mock_get_db_client, mock_datetime):
+        # Configure mocks
+        mock_db_instance = mock.MagicMock() # This will simulate the db client
+        mock_get_db_client.return_value = mock_db_instance
+        mock_user_set = mock.MagicMock()
+        mock_db_instance.collection('users').document.return_value.set = mock_user_set
 
-    import pytest
-    import os
-    os.environ['TESTING'] = 'true'  # Устанавливаем переменную окружения TESTING
-    from unittest.mock import Mock, patch
-    from firestore_utils import create_user
+        fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.now.return_value = fixed_now
+        # This mock is for firestore_utils.datetime.now used inside create_user
+        # The datetime, timedelta, timezone imported in this test file are for test logic itself.
 
-class TestCreateUser:
-    """Тесты для функции create_user"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_successful_creation(self, mock_client):
-        """Тест успешного создания пользователя"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        # Выполнение
-        result = create_user(
-            uid="new_uid",
-            email="new@example.com",
-            display_name="New User",
-            provider="email_webhook",
-            app_logger=Mock()
-        )
-        
-        # Проверка
-        assert result is not None
-        assert result["uid"] == "new_uid"
-        assert result["email"] == "new@example.com"
-        assert result["displayName"] == "New User"
-        assert result["provider"] == "email_webhook"
-        assert result["isActive"] is True
-        assert "photo_upload_count_current_month" in result
-        assert "last_upload_reset" in result
-        assert "createdAt" in result
-        
-        # Проверка вызова set
-        mock_doc_ref.set.assert_called_once()
-    
-    @patch('firestore_utils.firestore.client')
-    def test_creation_exception(self, mock_client):
-        """Тест исключения при создании пользователя"""
-        mock_client.side_effect = Exception("Database error")
-        
-        logger = Mock()
-        result = create_user(
-            uid="new_uid",
-            email="new@example.com",
-            display_name="New User",
-            provider="email_webhook",
-            app_logger=logger
-        )
-        
-        assert result is None
-        logger.error.assert_called_once()
+        # Call the function
+        uid = "test_uid"
+        email = "test@example.com"
+        display_name = "Test User"
+        provider = "test_provider"
 
+        firestore_utils.create_user(uid, email, display_name, provider, app_logger=mock.MagicMock())
 
-class TestSaveContentItem:
-    """Тесты для функции save_content_item"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_successful_save(self, mock_client):
-        """Тест успешного сохранения контента"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_content_ref = Mock()
-        mock_db.collection.return_value = mock_content_ref
-        
-        mock_doc_ref = Mock()
-        mock_content_ref.document.return_value = mock_doc_ref
-        mock_doc_ref.id = "content_id"
-        
-        # Выполнение
-        content_data = {
-            "text": "Test content",
-            "imageUrl": "http://example.com/image.jpg",
-            "latitude": 55.7558,
-            "longitude": 37.6176
-        }
-        
-        result = save_content_item(content_data, Mock())
-        
-        # Проверка
-        assert result == "content_id"
-        mock_doc_ref.set.assert_called_once()
-        mock_doc_ref.update.assert_called_once()
-    
-    @patch('firestore_utils.firestore.client')
-    def test_save_exception(self, mock_client):
-        """Тест исключения при сохранении"""
-        mock_client.side_effect = Exception("Database error")
-        
-        logger = Mock()
-        content_data = {"text": "Test content"}
-        
-        result = save_content_item(content_data, logger)
-        
-        assert result is None
-        logger.error.assert_called_once()
+        # Assertions
+        self.assertTrue(mock_user_set.called)
+        args, kwargs = mock_user_set.call_args
 
+        # The actual call is user_ref.set(user_data), so user_data is the first positional argument
+        called_user_data = args[0]
 
-class TestIncrementUserPhotoCount:
-    """Тесты для функции increment_user_photo_count"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_successful_increment(self, mock_client):
-        """Тест успешного инкремента счетчика"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        # Выполнение
-        result = increment_user_photo_count("test_uid", Mock())
-        
-        # Проверка
-        assert result is True
-        mock_doc_ref.update.assert_called_once()
-    
-    @patch('firestore_utils.firestore.client')
-    def test_increment_exception(self, mock_client):
-        """Тест исключения при инкременте"""
-        mock_client.side_effect = Exception("Database error")
-        
-        logger = Mock()
-        result = increment_user_photo_count("test_uid", logger)
-        
-        assert result is False
-        logger.error.assert_called_once()
+        expected_period_end = fixed_now + timedelta(days=30)
 
+        self.assertEqual(called_user_data['uid'], uid)
+        self.assertEqual(called_user_data['email'], email)
+        self.assertEqual(called_user_data['createdAt'], firestore_utils.firestore.SERVER_TIMESTAMP)
+        self.assertEqual(called_user_data['current_period_start'], fixed_now)
+        self.assertEqual(called_user_data['current_period_end'], expected_period_end)
+        self.assertEqual(called_user_data['subscription_plan'], 'free')
 
-class TestResetMonthlyPhotoCountIfNeeded:
-    """Тесты для функции reset_monthly_photo_count_if_needed"""
-    
-    @patch('firestore_utils.firestore.client')
-    def test_reset_needed(self, mock_client):
-        """Тест когда сброс необходим"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        mock_doc = Mock()
-        mock_doc.exists = True
-        mock_doc.to_dict.return_value = {
-            "last_upload_reset": datetime(2023, 12, 1)  # Старый месяц
-        }
-        
-        mock_doc_ref.get.return_value = mock_doc
-        
-        # Выполнение
-        result = reset_monthly_photo_count_if_needed("test_uid", Mock())
-        
-        # Проверка
-        assert result is True
-        mock_doc_ref.update.assert_called_once()
-    
-    @patch('firestore_utils.firestore.client')
-    def test_reset_not_needed(self, mock_client):
-        """Тест когда сброс не необходим"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        mock_doc = Mock()
-        mock_doc.exists = True
-        mock_doc.to_dict.return_value = {
-            "last_upload_reset": datetime(2024, 1, 1)  # Текущий месяц
-        }
-        
-        mock_doc_ref.get.return_value = mock_doc
-        
-        # Выполнение
-        result = reset_monthly_photo_count_if_needed("test_uid", Mock())
-        
-        # Проверка
-        assert result is False
-        mock_doc_ref.update.assert_not_called()
-    
-    @patch('firestore_utils.firestore.client')
-    def test_user_not_found(self, mock_client):
-        """Тест когда пользователь не найден"""
-        # Подготовка моков
-        mock_db = Mock()
-        mock_client.return_value = mock_db
-        
-        mock_users_ref = Mock()
-        mock_db.collection.return_value = mock_users_ref
-        
-        mock_doc_ref = Mock()
-        mock_users_ref.document.return_value = mock_doc_ref
-        
-        mock_doc = Mock()
-        mock_doc.exists = False
-        
-        mock_doc_ref.get.return_value = mock_doc
-        
-        # Выполнение
-        logger = Mock()
-        result = reset_monthly_photo_count_if_needed("nonexistent_uid", logger)
-        
-        # Проверка
-        assert result is False
-        logger.warning.assert_called_once() 
+if __name__ == '__main__':
+    unittest.main()

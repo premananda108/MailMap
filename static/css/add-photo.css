@@ -1,0 +1,81 @@
+/* Add Photo Modal Styles */
+#add-photo-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6); /* Darker overlay */
+    display: flex; /* Already set by JS, but good for clarity */
+    align-items: center;
+    justify-content: center;
+    z-index: 10001; /* Ensure it's above the context menu */
+}
+
+#add-photo-modal > div { /* Direct child div which is the modal content panel */
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+    width: 90%;
+    max-width: 450px; /* Max width for the modal */
+    display: flex;
+    flex-direction: column; /* Stack elements vertically */
+    gap: 15px; /* Spacing between elements */
+}
+
+#add-photo-modal h3 {
+    margin-top: 0;
+    margin-bottom: 5px; /* Adjust spacing for title */
+    font-size: 20px;
+    color: #333;
+    text-align: center; /* Center the title */
+}
+
+#add-photo-modal input[type="file"],
+#add-photo-modal textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+#add-photo-modal textarea {
+    min-height: 80px; /* Give textarea some decent height */
+    resize: vertical; /* Allow vertical resize */
+}
+
+/* Styling for the div containing the buttons */
+#add-photo-modal > div > div:last-of-type {
+    display: flex;
+    justify-content: flex-end; /* Align buttons to the right */
+    gap: 10px; /* Space between buttons */
+    margin-top: 10px; /* Add some space above the button container */
+}
+
+#add-photo-modal button { /* General style for buttons inside the specific button container */
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* Specific button styling - assuming Submit is the first, Cancel is the second in the button container */
+#add-photo-modal > div > div:last-of-type button:nth-of-type(1) {
+    background-color: #28a745; /* Green for submit */
+    color: white;
+}
+#add-photo-modal > div > div:last-of-type button:nth-of-type(1):hover {
+    background-color: #218838;
+}
+
+#add-photo-modal > div > div:last-of-type button:nth-of-type(2) {
+    background-color: #dc3545; /* Red for cancel/close */
+    color: white;
+    /* margin-left: 10px; -- Replaced by gap in the container */
+}
+#add-photo-modal > div > div:last-of-type button:nth-of-type(2):hover {
+    background-color: #c82333;
+}
